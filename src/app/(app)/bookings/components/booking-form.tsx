@@ -27,7 +27,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import type { Customer } from "@/lib/types";
-import { mockCustomers } from "@/lib/mock-data"; // For customer selection
+import { fetchCustomers } from "@/lib/customer-api"; // Import the fetchCustomers function
 import { CalendarIcon, ClockIcon } from "lucide-react";
 import { format, differenceInHours, set, isValid } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -63,9 +63,13 @@ export function BookingForm() {
   const [calculatedCost, setCalculatedCost] = useState<number | null>(null);
   const [calculatedHours, setCalculatedHours] = useState<number | null>(null);
 
+  // Fetch customers when the component mounts
   useEffect(() => {
-    // Simulate fetching customers
-    setCustomers(mockCustomers);
+    const loadCustomers = async () => {
+      const customerList = await fetchCustomers();
+      setCustomers(customerList);
+    };
+    loadCustomers();
   }, []);
 
   const form = useForm<BookingFormValues>({
