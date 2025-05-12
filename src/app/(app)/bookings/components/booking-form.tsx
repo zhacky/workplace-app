@@ -25,7 +25,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent } from "@/components/ui/card";
 import type { Customer } from "@/lib/types";
 import { fetchCustomers } from "@/lib/customer-api"; // Import the fetchCustomers function
 import { CalendarIcon, ClockIcon } from "lucide-react";
@@ -58,7 +58,6 @@ const timeOptions = Array.from({ length: 24 * 2 }, (_, i) => {
 
 
 export function BookingForm() {
-  const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [calculatedCost, setCalculatedCost] = useState<number | null>(null);
   const [calculatedHours, setCalculatedHours] = useState<number | null>(null);
@@ -114,11 +113,6 @@ export function BookingForm() {
 
   function onSubmit(values: BookingFormValues) {
     console.log("Booking created:", values, { calculatedHours, calculatedCost });
-    toast({
-      title: "Booking Created",
-      description: `Booking for ${customers.find(c => c.id === values.customerId)?.name} confirmed for ${calculatedHours?.toFixed(1)} hours. Total: $${calculatedCost?.toFixed(2)}`,
-    });
-    // In a real app, you'd send this to an API and then maybe generate an invoice
     form.reset();
     setCalculatedCost(null);
     setCalculatedHours(null);

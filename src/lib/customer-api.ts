@@ -1,4 +1,5 @@
-Y// src/lib/customer-api.ts
+
+// src/lib/customer-api.ts
 
 import { Invoice } from "./types"; // Assuming Invoice type is relevant
 
