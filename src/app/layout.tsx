@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Workplace Central',
+  title: 'Workplace Studio',
   description: 'Customer management for The Workplace co-working space.',
 };
 

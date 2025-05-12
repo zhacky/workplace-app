@@ -11,7 +11,7 @@ export function Logo({ className, iconOnly = false, ...props }: LogoProps) {
       <Briefcase className="h-6 w-6" />
       {!iconOnly && (
         <span className="text-xl font-bold text-foreground">
-          Workplace<span className="text-accent">Central</span>
+          Workplace<span className="text-accent">Studio</span>
         </span>
       )}
     </div>
