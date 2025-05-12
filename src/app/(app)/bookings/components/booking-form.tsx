@@ -112,10 +112,35 @@ export function BookingForm() {
 
 
   function onSubmit(values: BookingFormValues) {
-    console.log("Booking created:", values, { calculatedHours, calculatedCost });
-    form.reset();
-    setCalculatedCost(null);
-    setCalculatedHours(null);
+    if (calculatedHours === null || calculatedCost === null) {
+      console.error("Cannot submit booking without calculated cost.");
+      return;
+    }
+
+    const bookingData = {
+      ...values,
+      hours: calculatedHours,
+      cost: calculatedCost,
+    };
+
+    fetch('/api/bookings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(bookingData),
+    })
+    .then(response => response.json())
+    .then(data => {
+      console.log("Booking created successfully:", data);
+      form.reset();
+      setCalculatedCost(null);
+      setCalculatedHours(null);
+    })
+    .catch(error => {
+      console.error("Error creating booking:", error);
+      // Optionally show an error message to the user
+    });
   }
 
   return (
