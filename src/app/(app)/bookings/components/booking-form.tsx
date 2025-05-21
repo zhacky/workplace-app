@@ -1,3 +1,4 @@
+
 // src/app/(app)/bookings/components/booking-form.tsx
 "use client";
 
@@ -29,7 +30,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { Customer } from "@/lib/types";
 import { fetchCustomers } from "@/lib/customer-api"; // Import the fetchCustomers function
 import { CalendarIcon, ClockIcon } from "lucide-react";
-import { format, differenceInHours, set, isValid } from "date-fns";
+import { format, differenceInHours, set, isValid, differenceInMinutes } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 
@@ -40,6 +41,7 @@ const bookingFormSchema = z.object({
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid end time format (HH:mm)."),
   notes: z.string().optional(),
 }).refine(data => {
+    if (!data.startTime || !data.endTime) return true; // Skip if times are not set
     const [startHour, startMinute] = data.startTime.split(':').map(Number);
     const [endHour, endMinute] = data.endTime.split(':').map(Number);
     return (endHour > startHour) || (endHour === startHour && endMinute > startMinute);
@@ -61,6 +63,32 @@ export function BookingForm() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [calculatedCost, setCalculatedCost] = useState<number | null>(null);
   const [calculatedHours, setCalculatedHours] = useState<number | null>(null);
+  const [minCalendarDate, setMinCalendarDate] = useState<Date | undefined>(undefined);
+
+  const form = useForm<BookingFormValues>({
+    resolver: zodResolver(bookingFormSchema),
+    defaultValues: {
+      customerId: "",
+      bookingDate: undefined, // Initialize as undefined to prevent hydration mismatch
+      startTime: "09:00",
+      endTime: "10:00",
+      notes: "",
+    },
+  });
+
+  const { watch, setValue } = form;
+
+  // Set initial bookingDate and minCalendarDate on client-side to avoid hydration errors
+  useEffect(() => {
+    const now = new Date();
+    // Set the bookingDate form field only on the client side after mount.
+    setValue("bookingDate", now, { shouldValidate: true });
+    
+    // Set the minimum selectable date for the calendar (start of today).
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    setMinCalendarDate(todayStart);
+  }, [setValue]);
+
 
   // Fetch customers when the component mounts
   useEffect(() => {
@@ -71,18 +99,6 @@ export function BookingForm() {
     loadCustomers();
   }, []);
 
-  const form = useForm<BookingFormValues>({
-    resolver: zodResolver(bookingFormSchema),
-    defaultValues: {
-      customerId: "",
-      bookingDate: new Date(),
-      startTime: "09:00",
-      endTime: "10:00",
-      notes: "",
-    },
-  });
-
-  const { watch, setValue } = form;
   const watchedCustomerId = watch("customerId");
   const watchedDate = watch("bookingDate");
   const watchedStartTime = watch("startTime");
@@ -100,25 +116,39 @@ export function BookingForm() {
       const endDate = set(new Date(watchedDate), { hours: endHour, minutes: endMinute, seconds: 0, milliseconds: 0 });
       
       if (isValid(startDate) && isValid(endDate) && endDate > startDate) {
-        const hours = differenceInHours(endDate, startDate) + (differenceInMinutes(endDate, startDate) % 60) / 60;
+        // Using custom differenceInMinutes and then converting to hours for precision
+        const totalMinutes = differenceInMinutes(endDate, startDate);
+        const hours = totalMinutes / 60;
         setCalculatedHours(hours);
         setCalculatedCost(hours * customer.hourlyRate);
       } else {
         setCalculatedHours(null);
         setCalculatedCost(null);
       }
+    } else {
+        setCalculatedHours(null);
+        setCalculatedCost(null);
     }
   }, [watchedCustomerId, watchedDate, watchedStartTime, watchedEndTime, customers]);
 
 
   function onSubmit(values: BookingFormValues) {
     if (calculatedHours === null || calculatedCost === null) {
-      console.error("Cannot submit booking without calculated cost.");
+      // This check might be redundant if button is disabled, but good for safety.
+      const [startHour, startMinute] = values.startTime.split(':').map(Number);
+      const [endHour, endMinute] = values.endTime.split(':').map(Number);
+      if (!((endHour > startHour) || (endHour === startHour && endMinute > startMinute))) {
+          form.setError("endTime", { type: "manual", message: "End time must be after start time." });
+          return;
+      }
+      console.error("Cannot submit booking without calculated cost or valid times.");
       return;
     }
+    
 
     const bookingData = {
       ...values,
+      bookingDate: format(values.bookingDate, "yyyy-MM-dd"), // Store date as string if preferred by backend
       hours: calculatedHours,
       cost: calculatedCost,
     };
@@ -130,16 +160,33 @@ export function BookingForm() {
       },
       body: JSON.stringify(bookingData),
     })
-    .then(response => response.json())
+    .then(response => {
+      if (!response.ok) {
+        return response.json().then(err => { throw new Error(err.message || "Failed to create booking") });
+      }
+      return response.json();
+    })
     .then(data => {
       console.log("Booking created successfully:", data);
-      form.reset();
+      form.reset({ 
+        customerId: "", 
+        bookingDate: new Date(), // Reset to current date on client
+        startTime: "09:00", 
+        endTime: "10:00", 
+        notes: "" 
+      });
       setCalculatedCost(null);
       setCalculatedHours(null);
+      // Re-trigger client-side date setup after reset
+      const now = new Date();
+      setValue("bookingDate", now, { shouldValidate: true });
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      setMinCalendarDate(todayStart);
     })
     .catch(error => {
       console.error("Error creating booking:", error);
-      // Optionally show an error message to the user
+      // Optionally show an error message to the user via toast or form error
+      form.setError("root.serverError", { type: "manual", message: error.message });
     });
   }
 
@@ -152,7 +199,7 @@ export function BookingForm() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Customer</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} value={field.value || ""}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a customer" />
@@ -200,8 +247,10 @@ export function BookingForm() {
                   <Calendar
                     mode="single"
                     selected={field.value}
-                    onSelect={field.onChange}
-                    disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} // Disable past dates
+                    onSelect={(date) => {
+                        if (date) field.onChange(date);
+                    }}
+                    disabled={(date) => minCalendarDate ? date < minCalendarDate : true} // Use state for min date
                     initialFocus
                   />
                 </PopoverContent>
@@ -218,7 +267,7 @@ export function BookingForm() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Start Time</FormLabel>
-                 <Select onValueChange={field.onChange} defaultValue={field.value}>
+                 <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <ClockIcon className="mr-2 h-4 w-4 opacity-50" />
@@ -241,7 +290,7 @@ export function BookingForm() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>End Time</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <ClockIcon className="mr-2 h-4 w-4 opacity-50" />
@@ -260,7 +309,7 @@ export function BookingForm() {
           />
         </div>
 
-        {calculatedHours !== null && calculatedCost !== null && (
+        {calculatedHours !== null && calculatedCost !== null && calculatedHours > 0 && (
           <Card className="bg-secondary/50">
             <CardContent className="pt-6">
               <p className="text-lg font-semibold text-foreground">
@@ -284,14 +333,23 @@ export function BookingForm() {
                   placeholder="Any specific requests or notes for this booking?"
                   className="resize-none"
                   {...field}
+                  value={field.value || ""}
                 />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-
-        <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || calculatedCost === null}>
+        {form.formState.errors.root?.serverError && (
+            <FormMessage className="text-destructive text-sm">
+                {form.formState.errors.root.serverError.message}
+            </FormMessage>
+        )}
+        <Button 
+          type="submit" 
+          className="w-full" 
+          disabled={form.formState.isSubmitting || calculatedCost === null || calculatedHours === null || calculatedHours <= 0}
+        >
           {form.formState.isSubmitting ? "Creating Booking..." : "Create Booking"}
         </Button>
       </form>
@@ -299,8 +357,4 @@ export function BookingForm() {
   );
 }
 
-// Helper for minute difference, as date-fns differenceInHours rounds down.
-function differenceInMinutes(dateLeft: Date, dateRight: Date): number {
-  return (dateLeft.getTime() - dateRight.getTime()) / (1000 * 60);
-}
-
+    
