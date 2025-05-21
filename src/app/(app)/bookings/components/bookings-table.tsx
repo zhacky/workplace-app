@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import type { Customer } from '@/lib/types';
 import { fetchCustomers } from '@/lib/customer-api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,7 +23,7 @@ interface BookingFromAPI {
   hours: number;
   cost: number;
   notes?: string;
-  createdAt: string; // ISO date string
+  createdAt?: string; // ISO date string - made optional
 }
 
 interface EnrichedBooking extends BookingFromAPI {
@@ -144,7 +144,35 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {bookings.map(booking => (
+              {bookings.map(booking => {
+                let formattedCreatedAt = 'N/A';
+                if (booking.createdAt && typeof booking.createdAt === 'string') {
+                  try {
+                    const parsedDate = parseISO(booking.createdAt);
+                    if (isValid(parsedDate)) {
+                       formattedCreatedAt = format(parsedDate, "MMM d, yyyy, p");
+                    } else {
+                      console.warn(`Invalid date string for booking ${booking.id}: ${booking.createdAt}`);
+                    }
+                  } catch (e) {
+                    console.error(`Error parsing date for booking ${booking.id}: ${booking.createdAt}`, e);
+                  }
+                } else if (booking.createdAt) {
+                  // If createdAt exists but is not a string (e.g., already a Date object from a different source, though unlikely here)
+                  try {
+                    const dateValue = new Date(booking.createdAt as any); // Attempt to coerce
+                    if (isValid(dateValue)) { 
+                       formattedCreatedAt = format(dateValue, "MMM d, yyyy, p");
+                    } else {
+                       console.warn(`Invalid non-string date value for booking ${booking.id}:`, booking.createdAt);
+                    }
+                  } catch(e) {
+                     console.error(`Error coercing/formatting date for booking ${booking.id}:`, booking.createdAt, e);
+                  }
+                }
+
+
+                return (
                 <TableRow key={booking.id}>
                   <TableCell className="font-medium">{booking.customerName || 'N/A'}</TableCell>
                   <TableCell>{format(parseISO(booking.bookingDate), "MMM d, yyyy")}</TableCell>
@@ -167,9 +195,9 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
                       <span className="text-muted-foreground">-</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">{format(parseISO(booking.createdAt), "MMM d, yyyy, p")}</TableCell>
+                  <TableCell className="text-right">{formattedCreatedAt}</TableCell>
                 </TableRow>
-              ))}
+              )})}
             </TableBody>
           </Table>
         </CardContent>
@@ -178,3 +206,4 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
   );
 }
 
+    
