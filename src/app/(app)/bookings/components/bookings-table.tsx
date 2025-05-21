@@ -25,11 +25,12 @@ interface BookingFromAPI {
   hours: number;
   cost: number;
   notes?: string;
-  createdAt?: string; // ISO date string - made optional
+  createdAt?: string | admin.firestore.Timestamp; // Can be ISO string or Timestamp before serialization
 }
 
-interface EnrichedBooking extends BookingFromAPI {
+interface EnrichedBooking extends Omit<BookingFromAPI, 'createdAt'> {
   customerName?: string;
+  createdAt?: string; // Ensured to be string after processing
 }
 
 interface BookingsTableProps {
@@ -44,8 +45,9 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
   const [currentDateTime, setCurrentDateTime] = useState<Date | null>(null);
 
   useEffect(() => {
+    // Set currentDateTime only on the client after hydration
     setCurrentDateTime(new Date());
-  }, [refreshKey, bookings]); // Re-evaluate current time when data refreshes
+  }, [refreshKey]);
 
   const fetchBookingsAndCustomers = useCallback(async () => {
     setLoading(true);
@@ -60,15 +62,27 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
         const errorText = bookingsResponse.statusText || `HTTP error status: ${bookingsResponse.status}`;
         throw new Error(`Error fetching bookings: ${errorText}`);
       }
-      const bookingsData: BookingFromAPI[] = await bookingsResponse.json();
+      // The API returns createdAt as an ISO string due to NextResponse.json()
+      const bookingsDataFromAPI: BookingFromAPI[] = await bookingsResponse.json();
       
       setCustomers(customersData);
       const customerMap = new Map(customersData.map(c => [c.id, c.name]));
 
-      const enrichedBookingsData = bookingsData.map(b => ({
-        ...b,
-        customerName: customerMap.get(b.customerId) || b.customerId,
-      }));
+      const enrichedBookingsData: EnrichedBooking[] = bookingsDataFromAPI.map(b => {
+        let createdAtString: string | undefined = undefined;
+        if (typeof b.createdAt === 'string') {
+          createdAtString = b.createdAt;
+        } else if (b.createdAt && typeof (b.createdAt as any).toDate === 'function') {
+          // This case handles if somehow a raw Timestamp object leaks through, though unlikely with NextResponse.json
+          createdAtString = (b.createdAt as any).toDate().toISOString();
+        }
+
+        return {
+          ...b,
+          customerName: customerMap.get(b.customerId) || b.customerId,
+          createdAt: createdAtString,
+        };
+      });
       
       setBookings(enrichedBookingsData);
 
@@ -87,8 +101,13 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
   const getBookingStatus = (booking: EnrichedBooking, now: Date | null): 'past' | 'ongoing' | 'future' | 'unknown' => {
     if (!now || !booking.bookingDate || !booking.startTime || !booking.endTime) return 'unknown';
     try {
-      const bookingDateObj = parseISO(booking.bookingDate);
-      if (!isValid(bookingDateObj)) return 'unknown';
+      // bookingDate is "yyyy-MM-dd", so parseISO should be fine if it's a valid date string.
+      // However, API might send malformed data, so robustness is key.
+      const bookingDateObj = parseISO(booking.bookingDate); 
+      if (!isValid(bookingDateObj)) {
+        console.warn(`Invalid bookingDate string for booking ${booking.id}: ${booking.bookingDate}`);
+        return 'unknown';
+      }
 
       const [startHour, startMinute] = booking.startTime.split(':').map(Number);
       const [endHour, endMinute] = booking.endTime.split(':').map(Number);
@@ -96,15 +115,18 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
       const bookingStartDateTime = set(bookingDateObj, { hours: startHour, minutes: startMinute, seconds: 0, milliseconds: 0 });
       const bookingEndDateTime = set(bookingDateObj, { hours: endHour, minutes: endMinute, seconds: 0, milliseconds: 0 });
 
-      if (!isValid(bookingStartDateTime) || !isValid(bookingEndDateTime)) return 'unknown';
+      if (!isValid(bookingStartDateTime) || !isValid(bookingEndDateTime)) {
+        console.warn(`Invalid start/end times for booking ${booking.id}: ${booking.startTime}, ${booking.endTime}`);
+        return 'unknown';
+      }
       
       if (isBefore(bookingEndDateTime, now)) return 'past';
       if (isAfter(bookingStartDateTime, now)) return 'future';
       if (isAfter(now, bookingStartDateTime) && isBefore(now, bookingEndDateTime)) return 'ongoing';
       
-      return 'unknown'; // Should cover edge cases like start time equals end time if not caught by form validation
+      return 'unknown';
     } catch (e) {
-      console.error("Error determining booking status:", e);
+      console.error("Error determining booking status for booking " + booking.id + ":", e);
       return 'unknown';
     }
   };
@@ -160,7 +182,7 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
         <CardHeader>
           <CardTitle>Bookings List</CardTitle>
           <CardDescription>
-            Showing {bookings.length} recent bookings.
+            Showing {bookings.length} recent bookings. Current time: {currentDateTime ? format(currentDateTime, 'Pp') : 'Loading...'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -179,9 +201,8 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
             <TableBody>
               {bookings.map(booking => {
                 let formattedCreatedAt = 'N/A';
-                if (booking.createdAt) {
+                if (typeof booking.createdAt === 'string' && booking.createdAt.length > 0) {
                   try {
-                    // Firestore Timestamps are serialized to ISO strings by NextResponse.json
                     const parsedDate = parseISO(booking.createdAt);
                     if (isValid(parsedDate)) {
                        formattedCreatedAt = format(parsedDate, "MMM d, yyyy, p");
@@ -191,19 +212,21 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
                   } catch (e) {
                     console.error(`Error parsing 'createdAt' date for booking ${booking.id}: ${booking.createdAt}`, e);
                   }
+                } else if (booking.createdAt) {
+                    console.warn(`'createdAt' for booking ${booking.id} is not a non-empty string:`, booking.createdAt);
                 }
                 
                 const status = getBookingStatus(booking, currentDateTime);
                 const rowClasses = cn({
                   'opacity-60': status === 'past',
-                  'bg-accent/10': status === 'ongoing',
+                  'bg-primary/5 text-primary-foreground': status === 'ongoing', // Updated class for ongoing
                 });
 
                 return (
                 <TableRow key={booking.id} className={rowClasses}>
                   <TableCell className="font-medium">{booking.customerName || 'N/A'}</TableCell>
                   <TableCell>
-                     {booking.bookingDate ? format(parseISO(booking.bookingDate), "MMM d, yyyy") : 'N/A'}
+                     {booking.bookingDate && isValid(parseISO(booking.bookingDate)) ? format(parseISO(booking.bookingDate), "MMM d, yyyy") : 'N/A'}
                   </TableCell>
                   <TableCell>{booking.startTime} - {booking.endTime}</TableCell>
                   <TableCell className="text-center">{booking.hours} hr(s)</TableCell>
@@ -234,3 +257,8 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
     </TooltipProvider>
   );
 }
+
+// Make sure to import Firestore types if you expect Timestamp objects,
+// though NextResponse.json usually serializes them.
+// import type admin from 'firebase-admin';
+```
