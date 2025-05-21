@@ -12,6 +12,7 @@ import { fetchCustomers } from '@/lib/customer-api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Info } from 'lucide-react';
+import { Button } from "@/components/ui/button";
 
 interface BookingFromAPI {
   id: string;
@@ -176,3 +177,4 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
     </TooltipProvider>
   );
 }
+
