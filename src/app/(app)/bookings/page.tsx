@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookingForm } from "./components/booking-form";
+import { BookingsTable } from "./components/bookings-table";
 
 export default function BookingsPage() {
   return (
@@ -22,6 +23,8 @@ export default function BookingsPage() {
           <BookingForm />
         </CardContent>
       </Card>
+
+      <BookingsTable />
     </div>
   );
 }

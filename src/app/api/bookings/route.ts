@@ -33,3 +33,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: 'Error saving booking data.' }, { status: 500 });
   }
 }
+
+// GET handler (new)
+export async function GET() {
+ try {
+    const bookingsRef = db.collection('bookings');
+    const snapshot = await bookingsRef.orderBy('createdAt', 'desc').get(); // Order by creation date
+
+    const bookings = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return NextResponse.json(bookings, { status: 200 });
+  } catch (error) {
+    console.error("Error fetching booking data from Firebase:", error);
+    return NextResponse.json({ message: 'Error fetching booking data.' }, { status: 500 });
+  }
+}
+
+
