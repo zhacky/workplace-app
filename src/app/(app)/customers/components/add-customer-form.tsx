@@ -15,14 +15,13 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-// import type { Customer } from "@/lib/types"; // If submitting full customer object
 
 const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
   email: z.string().email("Invalid email address."),
   phone: z.string().optional(),
   company: z.string().optional(),
-  hourlyRate: z.coerce.number().min(0, "Hourly rate must be positive."),
+  hourlyRate: z.coerce.number().min(0, "Hourly rate must be a non-negative number."),
 });
 
 type AddCustomerFormValues = z.infer<typeof formSchema>;
@@ -44,18 +43,39 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
     },
   });
 
-  function onSubmit(values: AddCustomerFormValues) {
-    // Placeholder for actual submission logic
-    console.log("Adding customer:", values);
-    // Simulate API call
-    setTimeout(() => {
+  async function onSubmit(values: AddCustomerFormValues) {
+    form.clearErrors("root.serverError");
+    try {
+      const response = await fetch('/api/customers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(values),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Server error: ${response.status}`);
+      }
+
+      // const newCustomer = await response.json(); // If needed
+
       toast({
         title: "Customer Added",
         description: `${values.name} has been successfully added.`,
       });
       form.reset();
       onSuccess?.();
-    }, 1000);
+    } catch (error: any) {
+      console.error("Error adding customer:", error);
+      toast({
+        title: "Failed to Add Customer",
+        description: error.message || "An unexpected error occurred.",
+        variant: "destructive",
+      });
+      form.setError("root.serverError", { type: "manual", message: error.message || "An unexpected error occurred."});
+    }
   }
 
   return (
@@ -94,7 +114,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
             <FormItem>
               <FormLabel>Phone Number (Optional)</FormLabel>
               <FormControl>
-                <Input placeholder="e.g. 555-1234" {...field} />
+                <Input placeholder="e.g. 555-1234" {...field} value={field.value ?? ""} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -107,7 +127,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
             <FormItem>
               <FormLabel>Company (Optional)</FormLabel>
               <FormControl>
-                <Input placeholder="e.g. Acme Corp" {...field} />
+                <Input placeholder="e.g. Acme Corp" {...field} value={field.value ?? ""} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -126,6 +146,11 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
             </FormItem>
           )}
         />
+        {form.formState.errors.root?.serverError && (
+            <FormMessage className="text-destructive text-sm font-medium">
+                {form.formState.errors.root.serverError.message}
+            </FormMessage>
+        )}
         <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting ? "Adding..." : "Add Customer"}
         </Button>
