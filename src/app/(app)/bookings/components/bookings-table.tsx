@@ -2,17 +2,19 @@
 // src/app/(app)/bookings/components/bookings-table.tsx
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback }
+from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { format, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, isBefore, isAfter, set } from 'date-fns';
 import type { Customer } from '@/lib/types';
 import { fetchCustomers } from '@/lib/customer-api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Info } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import { cn } from '@/lib/utils';
 
 interface BookingFromAPI {
   id: string;
@@ -39,6 +41,11 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentDateTime, setCurrentDateTime] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setCurrentDateTime(new Date());
+  }, [refreshKey, bookings]); // Re-evaluate current time when data refreshes
 
   const fetchBookingsAndCustomers = useCallback(async () => {
     setLoading(true);
@@ -76,6 +83,32 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
   useEffect(() => {
     fetchBookingsAndCustomers();
   }, [fetchBookingsAndCustomers, refreshKey]);
+
+  const getBookingStatus = (booking: EnrichedBooking, now: Date | null): 'past' | 'ongoing' | 'future' | 'unknown' => {
+    if (!now || !booking.bookingDate || !booking.startTime || !booking.endTime) return 'unknown';
+    try {
+      const bookingDateObj = parseISO(booking.bookingDate);
+      if (!isValid(bookingDateObj)) return 'unknown';
+
+      const [startHour, startMinute] = booking.startTime.split(':').map(Number);
+      const [endHour, endMinute] = booking.endTime.split(':').map(Number);
+
+      const bookingStartDateTime = set(bookingDateObj, { hours: startHour, minutes: startMinute, seconds: 0, milliseconds: 0 });
+      const bookingEndDateTime = set(bookingDateObj, { hours: endHour, minutes: endMinute, seconds: 0, milliseconds: 0 });
+
+      if (!isValid(bookingStartDateTime) || !isValid(bookingEndDateTime)) return 'unknown';
+      
+      if (isBefore(bookingEndDateTime, now)) return 'past';
+      if (isAfter(bookingStartDateTime, now)) return 'future';
+      if (isAfter(now, bookingStartDateTime) && isBefore(now, bookingEndDateTime)) return 'ongoing';
+      
+      return 'unknown'; // Should cover edge cases like start time equals end time if not caught by form validation
+    } catch (e) {
+      console.error("Error determining booking status:", e);
+      return 'unknown';
+    }
+  };
+
 
   if (loading) {
     return (
@@ -146,36 +179,32 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
             <TableBody>
               {bookings.map(booking => {
                 let formattedCreatedAt = 'N/A';
-                if (booking.createdAt && typeof booking.createdAt === 'string') {
+                if (booking.createdAt) {
                   try {
+                    // Firestore Timestamps are serialized to ISO strings by NextResponse.json
                     const parsedDate = parseISO(booking.createdAt);
                     if (isValid(parsedDate)) {
                        formattedCreatedAt = format(parsedDate, "MMM d, yyyy, p");
                     } else {
-                      console.warn(`Invalid date string for booking ${booking.id}: ${booking.createdAt}`);
+                      console.warn(`Invalid 'createdAt' date string for booking ${booking.id}: ${booking.createdAt}`);
                     }
                   } catch (e) {
-                    console.error(`Error parsing date for booking ${booking.id}: ${booking.createdAt}`, e);
-                  }
-                } else if (booking.createdAt) {
-                  // If createdAt exists but is not a string (e.g., already a Date object from a different source, though unlikely here)
-                  try {
-                    const dateValue = new Date(booking.createdAt as any); // Attempt to coerce
-                    if (isValid(dateValue)) { 
-                       formattedCreatedAt = format(dateValue, "MMM d, yyyy, p");
-                    } else {
-                       console.warn(`Invalid non-string date value for booking ${booking.id}:`, booking.createdAt);
-                    }
-                  } catch(e) {
-                     console.error(`Error coercing/formatting date for booking ${booking.id}:`, booking.createdAt, e);
+                    console.error(`Error parsing 'createdAt' date for booking ${booking.id}: ${booking.createdAt}`, e);
                   }
                 }
-
+                
+                const status = getBookingStatus(booking, currentDateTime);
+                const rowClasses = cn({
+                  'opacity-60': status === 'past',
+                  'bg-accent/10': status === 'ongoing',
+                });
 
                 return (
-                <TableRow key={booking.id}>
+                <TableRow key={booking.id} className={rowClasses}>
                   <TableCell className="font-medium">{booking.customerName || 'N/A'}</TableCell>
-                  <TableCell>{format(parseISO(booking.bookingDate), "MMM d, yyyy")}</TableCell>
+                  <TableCell>
+                     {booking.bookingDate ? format(parseISO(booking.bookingDate), "MMM d, yyyy") : 'N/A'}
+                  </TableCell>
                   <TableCell>{booking.startTime} - {booking.endTime}</TableCell>
                   <TableCell className="text-center">{booking.hours} hr(s)</TableCell>
                   <TableCell className="text-right">₱{booking.cost ? booking.cost.toFixed(2) : 'N/A'}</TableCell>
@@ -205,5 +234,3 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
     </TooltipProvider>
   );
 }
-
-    
