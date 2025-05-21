@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SampleChart } from "./components/sample-chart";
 import { DollarSign, Users, CalendarClock, TrendingUp } from "lucide-react";
@@ -19,7 +20,7 @@ export default function ReportsPage() {
             <DollarSign className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">$45,231.89</div>
+            <div className="text-2xl font-bold text-foreground">₱45,231.89</div>
             <p className="text-xs text-muted-foreground">+20.1% from last month</p>
           </CardContent>
         </Card>

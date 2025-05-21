@@ -1,3 +1,4 @@
+
 // src/app/(app)/reports/components/sample-chart.tsx
 "use client";
 
@@ -20,7 +21,7 @@ const chartData = [
 
 const chartConfig = {
   revenue: {
-    label: "Revenue ($)",
+    label: "Revenue (₱)",
     color: "hsl(var(--chart-1))",
   },
   bookings: {

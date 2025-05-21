@@ -1,3 +1,4 @@
+
 // src/app/(app)/invoices/components/invoice-table.tsx
 "use client";
 
@@ -92,7 +93,7 @@ export function InvoiceTable({ initialInvoices }: InvoiceTableProps) {
             <TableCell>{invoice.customerName}</TableCell>
             <TableCell>{format(new Date(invoice.issueDate), "MMM d, yyyy")}</TableCell>
             <TableCell>{format(new Date(invoice.dueDate), "MMM d, yyyy")}</TableCell>
-            <TableCell className="text-right">${invoice.amount.toFixed(2)}</TableCell>
+            <TableCell className="text-right">₱{invoice.amount.toFixed(2)}</TableCell>
             <TableCell className="text-center">
               <Badge 
                 variant={getStatusBadgeVariant(invoice.status)} 

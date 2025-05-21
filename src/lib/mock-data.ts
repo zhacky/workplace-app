@@ -1,3 +1,4 @@
+
 import type { Customer, Booking, Invoice, InvoiceStatus } from './types';
 
 export const mockCustomers: Customer[] = [

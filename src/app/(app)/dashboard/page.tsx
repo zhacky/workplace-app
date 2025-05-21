@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Clock, FileText, BarChart3 } from "lucide-react";
 import Link from "next/link";
@@ -7,7 +8,7 @@ export default function DashboardPage() {
     { title: "Active Customers", value: "120", icon: Users, color: "text-blue-500", href: "/customers" },
     { title: "Today's Bookings", value: "15", icon: Clock, color: "text-green-500", href: "/bookings" },
     { title: "Pending Invoices", value: "8", icon: FileText, color: "text-orange-500", href: "/invoices" },
-    { title: "Monthly Revenue", value: "$12,500", icon: BarChart3, color: "text-purple-500", href: "/reports" },
+    { title: "Monthly Revenue", value: "₱12,500", icon: BarChart3, color: "text-purple-500", href: "/reports" },
   ];
 
   return (

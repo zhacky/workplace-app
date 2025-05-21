@@ -208,7 +208,7 @@ export function BookingForm() {
                 <SelectContent>
                   {customers.map((customer) => (
                     <SelectItem key={customer.id} value={customer.id}>
-                      {customer.name} (Rate: ${customer.hourlyRate}/hr)
+                      {customer.name} (Rate: ₱{customer.hourlyRate}/hr)
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -316,7 +316,7 @@ export function BookingForm() {
                 Total Duration: <span className="text-primary">{calculatedHours.toFixed(1)} hours</span>
               </p>
               <p className="text-2xl font-bold text-foreground">
-                Estimated Cost: <span className="text-primary">${calculatedCost.toFixed(2)}</span>
+                Estimated Cost: <span className="text-primary">₱{calculatedCost.toFixed(2)}</span>
               </p>
             </CardContent>
           </Card>

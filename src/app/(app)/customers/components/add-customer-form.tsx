@@ -1,3 +1,4 @@
+
 // src/app/(app)/customers/components/add-customer-form.tsx
 "use client";
 
@@ -138,7 +139,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
           name="hourlyRate"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Hourly Rate ($)</FormLabel>
+              <FormLabel>Hourly Rate (₱)</FormLabel>
               <FormControl>
                 <Input type="number" step="0.01" {...field} />
               </FormControl>

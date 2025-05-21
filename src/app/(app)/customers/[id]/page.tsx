@@ -1,3 +1,4 @@
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,7 +76,7 @@ export default async function CustomerProfilePage({ params }: CustomerProfilePag
             )}
             <div className="flex items-center gap-3">
               <DollarSign className="h-5 w-5 text-muted-foreground" />
-              <span className="text-foreground">Hourly Rate: ${customer.hourlyRate.toFixed(2)}</span>
+              <span className="text-foreground">Hourly Rate: ₱{customer.hourlyRate.toFixed(2)}</span>
             </div>
             <div className="flex items-center gap-3">
               <CalendarDays className="h-5 w-5 text-muted-foreground" />
@@ -106,7 +107,7 @@ export default async function CustomerProfilePage({ params }: CustomerProfilePag
                         </p>
                       </div>
                       <Badge variant={booking.totalAmount > 0 ? "default" : "secondary" } className="bg-primary/10 text-primary border-primary/20">
-                        ${booking.totalAmount.toFixed(2)}
+                        ₱{booking.totalAmount.toFixed(2)}
                       </Badge>
                     </div>
                     {booking.notes && <p className="mt-2 text-sm text-muted-foreground italic">Notes: {booking.notes}</p>}

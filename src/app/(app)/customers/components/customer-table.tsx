@@ -1,3 +1,4 @@
+
 // src/app/(app)/customers/components/customer-table.tsx
 "use client";
 
@@ -45,7 +46,7 @@ export function CustomerTable({ customers }: CustomerTableProps) {
             <TableCell className="font-medium">{customer.name}</TableCell>
             <TableCell>{customer.email}</TableCell>
             <TableCell>{customer.company || "-"}</TableCell>
-            <TableCell className="hidden md:table-cell">${customer.hourlyRate.toFixed(2)}</TableCell>
+            <TableCell className="hidden md:table-cell">₱{customer.hourlyRate.toFixed(2)}</TableCell>
             <TableCell className="hidden lg:table-cell">{format(new Date(customer.createdAt), "MMM d, yyyy")}</TableCell>
             <TableCell className="text-right">
               <CustomerActions customer={customer} />

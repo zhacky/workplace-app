@@ -1,3 +1,4 @@
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -102,8 +103,8 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
                 <TableRow key={index}>
                   <TableCell className="font-medium text-foreground">{item.description}</TableCell>
                   <TableCell className="text-center text-muted-foreground">{item.quantity}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">${item.unitPrice.toFixed(2)}</TableCell>
-                  <TableCell className="text-right font-medium text-foreground">${item.total.toFixed(2)}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">₱{item.unitPrice.toFixed(2)}</TableCell>
+                  <TableCell className="text-right font-medium text-foreground">₱{item.total.toFixed(2)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -113,16 +114,16 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
             <div className="w-full md:w-1/3 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Subtotal:</span>
-                <span className="text-foreground">${invoice.amount.toFixed(2)}</span>
+                <span className="text-foreground">₱{invoice.amount.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Tax (0%):</span>
-                <span className="text-foreground">$0.00</span>
+                <span className="text-foreground">₱0.00</span>
               </div>
               <Separator />
               <div className="flex justify-between text-lg font-bold">
                 <span className="text-foreground">Total Amount Due:</span>
-                <span className="text-primary">${invoice.amount.toFixed(2)}</span>
+                <span className="text-primary">₱{invoice.amount.toFixed(2)}</span>
               </div>
             </div>
           </div>
