@@ -28,11 +28,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Customer } from "@/lib/types";
-import { fetchCustomers } from "@/lib/customer-api"; // Import the fetchCustomers function
+import { fetchCustomers } from "@/lib/customer-api";
 import { CalendarIcon, ClockIcon } from "lucide-react";
 import { format, differenceInHours, set, isValid, differenceInMinutes } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 const bookingFormSchema = z.object({
   customerId: z.string().min(1, "Customer is required."),
@@ -41,7 +42,7 @@ const bookingFormSchema = z.object({
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid end time format (HH:mm)."),
   notes: z.string().optional(),
 }).refine(data => {
-    if (!data.startTime || !data.endTime) return true; // Skip if times are not set
+    if (!data.startTime || !data.endTime) return true;
     const [startHour, startMinute] = data.startTime.split(':').map(Number);
     const [endHour, endMinute] = data.endTime.split(':').map(Number);
     return (endHour > startHour) || (endHour === startHour && endMinute > startMinute);
@@ -58,39 +59,37 @@ const timeOptions = Array.from({ length: 24 * 2 }, (_, i) => {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 });
 
+interface BookingFormProps {
+  onBookingCreated?: () => void;
+}
 
-export function BookingForm() {
+export function BookingForm({ onBookingCreated }: BookingFormProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [calculatedCost, setCalculatedCost] = useState<number | null>(null);
   const [calculatedHours, setCalculatedHours] = useState<number | null>(null);
   const [minCalendarDate, setMinCalendarDate] = useState<Date | undefined>(undefined);
+  const { toast } = useToast();
 
   const form = useForm<BookingFormValues>({
     resolver: zodResolver(bookingFormSchema),
     defaultValues: {
       customerId: "",
-      bookingDate: undefined, // Initialize as undefined to prevent hydration mismatch
+      bookingDate: undefined,
       startTime: "09:00",
       endTime: "10:00",
       notes: "",
     },
   });
 
-  const { watch, setValue } = form;
+  const { watch, setValue, setError, reset } = form;
 
-  // Set initial bookingDate and minCalendarDate on client-side to avoid hydration errors
   useEffect(() => {
     const now = new Date();
-    // Set the bookingDate form field only on the client side after mount.
     setValue("bookingDate", now, { shouldValidate: true });
-    
-    // Set the minimum selectable date for the calendar (start of today).
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     setMinCalendarDate(todayStart);
   }, [setValue]);
 
-
-  // Fetch customers when the component mounts
   useEffect(() => {
     const loadCustomers = async () => {
       const customerList = await fetchCustomers();
@@ -116,7 +115,6 @@ export function BookingForm() {
       const endDate = set(new Date(watchedDate), { hours: endHour, minutes: endMinute, seconds: 0, milliseconds: 0 });
       
       if (isValid(startDate) && isValid(endDate) && endDate > startDate) {
-        // Using custom differenceInMinutes and then converting to hours for precision
         const totalMinutes = differenceInMinutes(endDate, startDate);
         const hours = totalMinutes / 60;
         setCalculatedHours(hours);
@@ -131,63 +129,75 @@ export function BookingForm() {
     }
   }, [watchedCustomerId, watchedDate, watchedStartTime, watchedEndTime, customers]);
 
-
-  function onSubmit(values: BookingFormValues) {
+  async function onSubmit(values: BookingFormValues) {
     if (calculatedHours === null || calculatedCost === null) {
-      // This check might be redundant if button is disabled, but good for safety.
       const [startHour, startMinute] = values.startTime.split(':').map(Number);
       const [endHour, endMinute] = values.endTime.split(':').map(Number);
       if (!((endHour > startHour) || (endHour === startHour && endMinute > startMinute))) {
-          form.setError("endTime", { type: "manual", message: "End time must be after start time." });
+          setError("endTime", { type: "manual", message: "End time must be after start time." });
           return;
       }
-      console.error("Cannot submit booking without calculated cost or valid times.");
+      toast({
+        title: "Error",
+        description: "Cannot submit booking without calculated cost or valid times.",
+        variant: "destructive",
+      });
       return;
     }
     
-
     const bookingData = {
       ...values,
-      bookingDate: format(values.bookingDate, "yyyy-MM-dd"), // Store date as string if preferred by backend
+      bookingDate: format(values.bookingDate, "yyyy-MM-dd"),
       hours: calculatedHours,
       cost: calculatedCost,
     };
 
-    fetch('/api/bookings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(bookingData),
-    })
-    .then(response => {
+    try {
+      const response = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bookingData),
+      });
+
       if (!response.ok) {
-        return response.json().then(err => { throw new Error(err.message || "Failed to create booking") });
+        const err = await response.json();
+        throw new Error(err.message || "Failed to create booking");
       }
-      return response.json();
-    })
-    .then(data => {
-      console.log("Booking created successfully:", data);
-      form.reset({ 
+      
+      await response.json(); // const data = ...
+
+      toast({
+        title: "Booking Created",
+        description: "The new booking has been successfully created.",
+      });
+      
+      reset({ 
         customerId: "", 
-        bookingDate: new Date(), // Reset to current date on client
+        bookingDate: new Date(),
         startTime: "09:00", 
         endTime: "10:00", 
         notes: "" 
       });
       setCalculatedCost(null);
       setCalculatedHours(null);
-      // Re-trigger client-side date setup after reset
+      
+      // Client-side date setup after reset
       const now = new Date();
       setValue("bookingDate", now, { shouldValidate: true });
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       setMinCalendarDate(todayStart);
-    })
-    .catch(error => {
+
+      onBookingCreated?.();
+
+    } catch (error: any) {
       console.error("Error creating booking:", error);
-      // Optionally show an error message to the user via toast or form error
-      form.setError("root.serverError", { type: "manual", message: error.message });
-    });
+      setError("root.serverError", { type: "manual", message: error.message });
+      toast({
+        title: "Booking Failed",
+        description: error.message || "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    }
   }
 
   return (
@@ -250,7 +260,7 @@ export function BookingForm() {
                     onSelect={(date) => {
                         if (date) field.onChange(date);
                     }}
-                    disabled={(date) => minCalendarDate ? date < minCalendarDate : true} // Use state for min date
+                    disabled={(date) => minCalendarDate ? date < minCalendarDate : true}
                     initialFocus
                   />
                 </PopoverContent>
@@ -356,5 +366,3 @@ export function BookingForm() {
     </Form>
   );
 }
-
-    

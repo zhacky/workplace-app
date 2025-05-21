@@ -1,99 +1,178 @@
+
 // src/app/(app)/bookings/components/bookings-table.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-// Import your table component (adjust the path if needed)
-// import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useState, useEffect, useCallback } from 'react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { format, parseISO } from 'date-fns';
+import type { Customer } from '@/lib/types';
+import { fetchCustomers } from '@/lib/customer-api';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Info } from 'lucide-react';
 
-// You might want to define an interface for your booking data based on what your API returns
-interface Booking {
+interface BookingFromAPI {
   id: string;
-  customerId: string; // Or a customer object if you join data
+  customerId: string;
+  bookingDate: string; // "yyyy-MM-dd"
+  startTime: string; // "HH:mm"
+  endTime: string; // "HH:mm"
   hours: number;
   cost: number;
-  createdAt: string; // Changed from Firestore Timestamp to string, as it's serialized to JSON
-  // Optionally add other fields returned by the API if needed for the table
-  // customerName?: string;
-  // bookingDate?: string; // Dates from API will be strings
-  // startTime?: string;
-  // endTime?: string;
-  // notes?: string;
+  notes?: string;
+  createdAt: string; // ISO date string
 }
 
-export function BookingsTable() {
-  const [bookings, setBookings] = useState<Booking[]>([]);
+interface EnrichedBooking extends BookingFromAPI {
+  customerName?: string;
+}
+
+interface BookingsTableProps {
+  refreshKey: number; // Used to trigger re-fetch
+}
+
+export function BookingsTable({ refreshKey }: BookingsTableProps) {
+  const [bookings, setBookings] = useState<EnrichedBooking[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchBookings() {
-      try {
-        const response = await fetch('/api/bookings');
-        if (!response.ok) {
-          const errorText = response.statusText || `HTTP error status: ${response.status}`;
-          throw new Error(`Error fetching bookings: ${errorText}`);
-        }
-        const data: Booking[] = await response.json();
-        setBookings(data);
-      } catch (error: any) {
-        console.error("Could not fetch bookings:", error);
-        setError(error.message);
-      } finally {
-        setLoading(false);
-      }
-    }
+  const fetchBookingsAndCustomers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [bookingsResponse, customersData] = await Promise.all([
+        fetch('/api/bookings'),
+        fetchCustomers()
+      ]);
 
-    fetchBookings();
+      if (!bookingsResponse.ok) {
+        const errorText = bookingsResponse.statusText || `HTTP error status: ${bookingsResponse.status}`;
+        throw new Error(`Error fetching bookings: ${errorText}`);
+      }
+      const bookingsData: BookingFromAPI[] = await bookingsResponse.json();
+      
+      setCustomers(customersData);
+      const customerMap = new Map(customersData.map(c => [c.id, c.name]));
+
+      const enrichedBookingsData = bookingsData.map(b => ({
+        ...b,
+        customerName: customerMap.get(b.customerId) || b.customerId,
+      }));
+      
+      setBookings(enrichedBookingsData);
+
+    } catch (error: any) {
+      console.error("Could not fetch bookings or customers:", error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchBookingsAndCustomers();
+  }, [fetchBookingsAndCustomers, refreshKey]);
+
   if (loading) {
-    return <div>Loading bookings...</div>;
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Bookings List</CardTitle>
+          <CardDescription>Loading bookings...</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
   }
 
   if (error) {
-    return <div>Error: {error}</div>;
+    return (
+       <Card>
+        <CardHeader>
+          <CardTitle>Bookings List</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-destructive text-center py-8">Error: {error}</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   if (bookings.length === 0) {
-    return <div>No bookings found.</div>;
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Bookings List</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground text-center py-8">No bookings found. Create one to get started!</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
-    // Replace this div with your actual table component usage
-    // You'll need to map over the 'bookings' array to populate the table rows
-    <div>
-      <h2>Bookings List (Placeholder Table)</h2>
-      {/* Example of how you might use a table component: */}
-      {/*
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Customer ID</TableHead>
-            <TableHead>Hours</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Date</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {bookings.map(booking => (
-            <TableRow key={booking.id}>
-              <TableCell>{booking.customerId}</TableCell>
-              <TableCell>{booking.hours}</TableCell>
-              <TableCell>{booking.cost.toFixed(2)}</TableCell>
-              <TableCell>{new Date(booking.createdAt).toLocaleDateString()}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      */}
-      {/* Basic list for now to show data is fetched */}
-      <ul>
-        {bookings.map(booking => (
-          <li key={booking.id}>
-            Customer ID: {booking.customerId}, Hours: {booking.hours}, Amount: {booking.cost ? booking.cost.toFixed(2) : 'N/A'}, Date: {new Date(booking.createdAt).toLocaleDateString()}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <TooltipProvider>
+      <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle>Bookings List</CardTitle>
+          <CardDescription>
+            Showing {bookings.length} recent bookings.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Customer</TableHead>
+                <TableHead>Booking Date</TableHead>
+                <TableHead>Time Slot</TableHead>
+                <TableHead className="text-center">Duration</TableHead>
+                <TableHead className="text-right">Cost</TableHead>
+                <TableHead className="text-center">Notes</TableHead>
+                <TableHead className="text-right">Created On</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {bookings.map(booking => (
+                <TableRow key={booking.id}>
+                  <TableCell className="font-medium">{booking.customerName || 'N/A'}</TableCell>
+                  <TableCell>{format(parseISO(booking.bookingDate), "MMM d, yyyy")}</TableCell>
+                  <TableCell>{booking.startTime} - {booking.endTime}</TableCell>
+                  <TableCell className="text-center">{booking.hours} hr(s)</TableCell>
+                  <TableCell className="text-right">₱{booking.cost ? booking.cost.toFixed(2) : 'N/A'}</TableCell>
+                  <TableCell className="text-center">
+                    {booking.notes ? (
+                       <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Info className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-xs bg-popover text-popover-foreground border shadow-md">
+                          <p>{booking.notes}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">{format(parseISO(booking.createdAt), "MMM d, yyyy, p")}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </TooltipProvider>
   );
 }
