@@ -261,4 +261,3 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
 // Make sure to import Firestore types if you expect Timestamp objects,
 // though NextResponse.json usually serializes them.
 // import type admin from 'firebase-admin';
-```
