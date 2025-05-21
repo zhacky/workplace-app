@@ -10,13 +10,11 @@ interface Booking {
   id: string;
   customerId: string; // Or a customer object if you join data
   hours: number;
-  cost: number; // Changed from totalAmount to cost to match API
-  createdAt: {
-    toDate(): Date; // Assuming createdAt is a Firestore timestamp
-  };
+  cost: number;
+  createdAt: string; // Changed from Firestore Timestamp to string, as it's serialized to JSON
   // Optionally add other fields returned by the API if needed for the table
   // customerName?: string;
-  // bookingDate?: { toDate(): Date };
+  // bookingDate?: string; // Dates from API will be strings
   // startTime?: string;
   // endTime?: string;
   // notes?: string;
@@ -81,8 +79,8 @@ export function BookingsTable() {
             <TableRow key={booking.id}>
               <TableCell>{booking.customerId}</TableCell>
               <TableCell>{booking.hours}</TableCell>
-              <TableCell>{booking.cost.toFixed(2)}</TableCell> // Changed to cost
-              <TableCell>{booking.createdAt.toDate().toLocaleDateString()}</TableCell>
+              <TableCell>{booking.cost.toFixed(2)}</TableCell>
+              <TableCell>{new Date(booking.createdAt).toLocaleDateString()}</TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -92,7 +90,7 @@ export function BookingsTable() {
       <ul>
         {bookings.map(booking => (
           <li key={booking.id}>
-            Customer ID: {booking.customerId}, Hours: {booking.hours}, Amount: {booking.cost}, Date: {booking.createdAt.toDate().toLocaleDateString()}
+            Customer ID: {booking.customerId}, Hours: {booking.hours}, Amount: {booking.cost ? booking.cost.toFixed(2) : 'N/A'}, Date: {new Date(booking.createdAt).toLocaleDateString()}
           </li>
         ))}
       </ul>
