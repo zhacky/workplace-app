@@ -1,3 +1,4 @@
+
 // src/app/(app)/customers/page.tsx
 'use client';
 
@@ -46,18 +47,16 @@ export default function CustomersPage() {
     fetchCustomers();
   }, [fetchCustomers]);
 
-  const handleCustomerAdded = () => {
-    fetchCustomers(); // Re-fetch customers after one is added
-    setIsAddCustomerDialogOpen(false); // Close the dialog
+  const handleActionComplete = () => {
+    fetchCustomers(); // Re-fetch customers after add, edit or delete
+    setIsAddCustomerDialogOpen(false); // Close the add dialog if it was open
   };
 
   let content;
   if (isLoading) {
     content = (
       <div className="space-y-2">
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
+        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
       </div>
     );
   } else if (error) {
@@ -65,7 +64,7 @@ export default function CustomersPage() {
   } else if (customers.length === 0) {
     content = <p className="text-muted-foreground text-center py-8">No customers found. Add your first customer!</p>;
   } else {
-    content = <CustomerTable customers={customers} />;
+    content = <CustomerTable customers={customers} onActionComplete={handleActionComplete} />;
   }
 
   return (
@@ -88,7 +87,9 @@ export default function CustomersPage() {
                 Fill in the details below to add a new customer to The Workplace.
               </DialogDescription>
             </DialogHeader>
-            <AddCustomerForm onSuccess={handleCustomerAdded} />
+            <div className="py-4">
+              <AddCustomerForm onSuccess={handleActionComplete} />
+            </div>
           </DialogContent>
         </Dialog>
       </div>
