@@ -19,60 +19,31 @@ import { useState, useEffect } from "react";
 
 interface InvoiceTableProps {
   initialInvoices: Invoice[];
-  customers: Customer[]; // Added customers prop
+  customers: Customer[];
+  onActionComplete: () => void; 
 }
 
-export function InvoiceTable({ initialInvoices, customers }: InvoiceTableProps) {
-  const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
+export function InvoiceTable({ initialInvoices, customers, onActionComplete }: InvoiceTableProps) {
+  // Removed local invoices state, will rely on props passed from InvoicesPage
   const customerMap = new Map(customers.map(c => [c.id, c.name]));
-
-  useEffect(() => {
-    setInvoices(initialInvoices);
-  }, [initialInvoices]);
-
-
-  const getStatusBadgeVariant = (status: InvoiceStatus) => {
-    switch (status) {
-      case "paid":
-        return "default"; 
-      case "sent":
-        return "secondary"; 
-      case "draft":
-        return "outline";
-      case "overdue":
-        return "destructive";
-      case "cancelled":
-        return "outline"; 
-      default:
-        return "default";
-    }
-  };
 
   const getStatusBadgeClasses = (status: InvoiceStatus) => {
     switch (status) {
       case 'paid':
-        return 'bg-green-500/20 text-green-700 border-green-500/30 hover:bg-green-500/30';
+        return 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200/80';
       case 'sent':
-        return 'bg-blue-500/20 text-blue-700 border-blue-500/30 hover:bg-blue-500/30';
+        return 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200/80';
       case 'draft':
-        return 'bg-gray-500/20 text-gray-700 border-gray-500/30 hover:bg-gray-500/30';
+        return 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200/80';
       case 'overdue':
-        return 'bg-destructive/20 text-destructive border-destructive/30 hover:bg-destructive/30';
+        return 'bg-red-100 text-red-800 border-red-300 hover:bg-red-200/80'; // Using lighter shades for destructive for consistency
       case 'cancelled':
-        return 'bg-gray-400/20 text-gray-600 border-gray-400/30 hover:bg-gray-400/30 line-through';
+        return 'bg-neutral-100 text-neutral-600 border-neutral-300 hover:bg-neutral-200/80 line-through';
       default:
-        return '';
+        return 'bg-gray-100 text-gray-800 border-gray-300'; // Default fallback
     }
   };
 
-  const handleStatusChange = (invoiceId: string, newStatus: InvoiceStatus) => {
-    // TODO: In a real app, this should also make an API call to update the backend
-    setInvoices(prevInvoices => 
-      prevInvoices.map(inv => 
-        inv.id === invoiceId ? { ...inv, status: newStatus } : inv
-      )
-    );
-  };
 
   const formatDateSafe = (dateString: string | undefined) => {
     if (!dateString) return 'N/A';
@@ -82,7 +53,6 @@ export function InvoiceTable({ initialInvoices, customers }: InvoiceTableProps) 
         return format(parsedDate, "MMM d, yyyy");
       }
     } catch (e) {
-      // If parseISO throws (e.g., invalid format), catch and log
       console.error(`Error parsing date string "${dateString}":`, e);
     }
     return 'Invalid Date';
@@ -103,7 +73,7 @@ export function InvoiceTable({ initialInvoices, customers }: InvoiceTableProps) 
         </TableRow>
       </TableHeader>
       <TableBody>
-        {invoices.map((invoice) => (
+        {initialInvoices.map((invoice) => (
           <TableRow key={invoice.id}>
             <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
             <TableCell>{customerMap.get(invoice.customerId) || invoice.customerName || 'N/A'}</TableCell>
@@ -112,14 +82,14 @@ export function InvoiceTable({ initialInvoices, customers }: InvoiceTableProps) 
             <TableCell className="text-right">₱{invoice.amount.toFixed(2)}</TableCell>
             <TableCell className="text-center">
               <Badge 
-                variant={getStatusBadgeVariant(invoice.status)} 
-                className={cn("capitalize", getStatusBadgeClasses(invoice.status))}
+                variant={"outline"} // Using outline variant for consistent border application
+                className={cn("capitalize px-2 py-0.5 text-xs", getStatusBadgeClasses(invoice.status))}
               >
                 {invoice.status}
               </Badge>
             </TableCell>
             <TableCell className="text-right">
-              <InvoiceActions invoice={invoice} onStatusChange={handleStatusChange} />
+              <InvoiceActions invoice={invoice} onActionComplete={onActionComplete} />
             </TableCell>
           </TableRow>
         ))}
@@ -127,4 +97,3 @@ export function InvoiceTable({ initialInvoices, customers }: InvoiceTableProps) 
     </Table>
   );
 }
-
