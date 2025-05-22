@@ -54,3 +54,8 @@ export interface CompanySettings {
   paymentInstructions: string;
 }
 
+// Custom Claims interface
+export interface UserCustomClaims {
+  isSuperadmin?: boolean;
+  isEnabled?: boolean;
+}

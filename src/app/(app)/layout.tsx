@@ -1,3 +1,4 @@
+
 // src/app/(app)/layout.tsx
 'use client'; 
 
@@ -14,29 +15,33 @@ export default function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useAuth();
+  const { user, isSuperadmin, isEnabled, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    // This is a secondary check; AuthProvider handles primary redirection.
-    if (!loading && !user) {
-      router.push('/login');
+    if (!loading) {
+      if (!user) {
+        router.push('/login');
+      } else if (!isSuperadmin && !isEnabled) {
+        router.push('/pending-review');
+      }
     }
-  }, [user, loading, router]);
+  }, [user, isSuperadmin, isEnabled, loading, router]);
 
-  // If loading, AuthProvider will show its own loading UI.
-  // We avoid rendering the app layout until auth state is confirmed.
   if (loading) {
+    // AuthProvider shows its own skeleton, so we can return null here
+    // or a more specific app layout skeleton if desired.
     return null; 
   }
 
-  // If not loading and no user, redirection should have happened.
-  // Return null to prevent rendering app layout on auth pages if redirection is pending.
-  if (!user) {
+  if (!user || (!isSuperadmin && !isEnabled)) {
+    // If not loading, and user is not present or not authorized, 
+    // redirection should have happened via AuthProvider.
+    // Return null to prevent rendering app layout if redirection is pending or user is unauthorized.
     return null;
   }
   
-  // User is authenticated and not loading, render the app layout
+  // User is authenticated, authorized and not loading, render the app layout
   return (
     <SidebarProvider defaultOpen>
       <Sidebar collapsible="icon" className="border-r">
