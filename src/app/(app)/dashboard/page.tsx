@@ -1,7 +1,7 @@
 
 // src/app/(app)/dashboard/page.tsx
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Clock, FileText, BarChart3, AlertTriangle, ListChecks, UserPlus, Receipt } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Users, Clock, FileText, BarChart3, AlertTriangle, UserPlus, Receipt } from "lucide-react";
 import Link from "next/link";
 import admin from 'firebase-admin';
 import type { App } from 'firebase-admin/app';
@@ -118,12 +118,23 @@ async function getDashboardData() {
     recentBookingsSnapshot.forEach(doc => {
       const booking = doc.data() as Booking;
       const customerName = customerMap.get(booking.customerId) || 'Unknown Customer';
+      let bookingDateString = 'Invalid Date';
+      if (booking.bookingDate && isValid(parseISO(booking.bookingDate))) {
+        bookingDateString = format(parseISO(booking.bookingDate), 'MMM d');
+      }
+      
+      let createdAtTimestamp = new Date(0); // Default to epoch if invalid
+      const serializedCreatedAt = serializeTimestamp(booking.createdAt);
+      if (isValid(parseISO(serializedCreatedAt))) {
+          createdAtTimestamp = parseISO(serializedCreatedAt);
+      }
+
       activities.push({
         type: 'booking',
-        timestamp: parseISO(serializeTimestamp(booking.createdAt)),
-        description: `${customerName} booked a session for ${format(parseISO(booking.bookingDate), 'MMM d')}.`,
+        timestamp: createdAtTimestamp,
+        description: `${customerName} booked a session for ${bookingDateString}.`,
         icon: Clock,
-        href: `/bookings` // Or link to specific booking if detail page exists: `/bookings/${doc.id}`
+        href: `/bookings` 
       });
     });
 
@@ -131,9 +142,14 @@ async function getDashboardData() {
     const recentCustomersSnapshot = await db.collection('customers').orderBy('createdAt', 'desc').limit(3).get();
     recentCustomersSnapshot.forEach(doc => {
       const customer = doc.data() as Customer;
+      let createdAtTimestamp = new Date(0);
+      const serializedCreatedAt = serializeTimestamp(customer.createdAt);
+       if (isValid(parseISO(serializedCreatedAt))) {
+          createdAtTimestamp = parseISO(serializedCreatedAt);
+      }
       activities.push({
         type: 'customer',
-        timestamp: parseISO(serializeTimestamp(customer.createdAt)),
+        timestamp: createdAtTimestamp,
         description: `New customer registered: ${customer.name}.`,
         icon: UserPlus,
         href: `/customers/${doc.id}`
@@ -143,15 +159,21 @@ async function getDashboardData() {
     // Recent Paid Invoices
     const recentPaidInvoicesSnapshot = await db.collection('invoices')
       .where('status', '==', 'paid')
-      .orderBy('updatedAt', 'desc') // Assuming updatedAt is set when status changes to paid
+      .orderBy('updatedAt', 'desc') 
       .limit(3).get();
       
     recentPaidInvoicesSnapshot.forEach(doc => {
       const invoice = doc.data() as Invoice;
       const customerName = customerMap.get(invoice.customerId) || invoice.customerName || 'Unknown Customer';
+      let updatedAtTimestamp = new Date(0);
+      const serializedUpdatedAt = serializeTimestamp(invoice.updatedAt);
+       if (isValid(parseISO(serializedUpdatedAt))) {
+          updatedAtTimestamp = parseISO(serializedUpdatedAt);
+      }
+
       activities.push({
         type: 'invoice',
-        timestamp: parseISO(serializeTimestamp(invoice.updatedAt)), // Use updatedAt for paid status change
+        timestamp: updatedAtTimestamp, 
         description: `Invoice ${invoice.invoiceNumber} for ${customerName} was paid.`,
         icon: Receipt,
         href: `/invoices/${doc.id}`
@@ -261,7 +283,7 @@ export default async function DashboardPage() {
                     <div>
                         <p className="text-sm text-foreground leading-tight">{activity.description}</p>
                         <p className="text-xs text-muted-foreground">
-                            {format(activity.timestamp, "MMM d, yyyy 'at' p")}
+                            {isValid(activity.timestamp) && activity.timestamp.getTime() !== new Date(0).getTime() ? format(activity.timestamp, "MMM d, yyyy 'at' p") : 'Processing date...'}
                         </p>
                          {activity.href && (
                             <Link href={activity.href} className="text-xs text-primary hover:underline">
