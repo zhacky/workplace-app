@@ -7,6 +7,7 @@ export interface Customer {
   company?: string;
   hourlyRate: number; // Agreed hourly rate
   profilePictureUrl?: string;
+  gender: 'male' | 'female' | 'unknown';
   createdAt: string; // ISO date string
 }
 

@@ -15,6 +15,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
@@ -23,6 +25,7 @@ const formSchema = z.object({
   phone: z.string().optional(),
   company: z.string().optional(),
   hourlyRate: z.coerce.number().min(0, "Hourly rate must be a non-negative number."),
+  gender: z.enum(['male', 'female', 'unknown'], { required_error: "Gender is required." }),
 });
 
 type AddCustomerFormValues = z.infer<typeof formSchema>;
@@ -41,6 +44,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
       phone: "",
       company: "",
       hourlyRate: 25, // Default hourly rate
+      gender: "unknown",
     },
   });
 
@@ -59,8 +63,6 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         const errorData = await response.json();
         throw new Error(errorData.message || `Server error: ${response.status}`);
       }
-
-      // const newCustomer = await response.json(); // If needed
 
       toast({
         title: "Customer Added",
@@ -142,6 +144,42 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
               <FormLabel>Hourly Rate (₱)</FormLabel>
               <FormControl>
                 <Input type="number" step="0.01" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="gender"
+          render={({ field }) => (
+            <FormItem className="space-y-3">
+              <FormLabel>Gender</FormLabel>
+              <FormControl>
+                <RadioGroup
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                  className="flex flex-col space-y-1 md:flex-row md:space-y-0 md:space-x-4"
+                >
+                  <FormItem className="flex items-center space-x-3 space-y-0">
+                    <FormControl>
+                      <RadioGroupItem value="male" />
+                    </FormControl>
+                    <FormLabel className="font-normal">Male</FormLabel>
+                  </FormItem>
+                  <FormItem className="flex items-center space-x-3 space-y-0">
+                    <FormControl>
+                      <RadioGroupItem value="female" />
+                    </FormControl>
+                    <FormLabel className="font-normal">Female</FormLabel>
+                  </FormItem>
+                  <FormItem className="flex items-center space-x-3 space-y-0">
+                    <FormControl>
+                      <RadioGroupItem value="unknown" />
+                    </FormControl>
+                    <FormLabel className="font-normal">Unknown</FormLabel>
+                  </FormItem>
+                </RadioGroup>
               </FormControl>
               <FormMessage />
             </FormItem>

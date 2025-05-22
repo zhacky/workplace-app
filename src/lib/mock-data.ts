@@ -10,6 +10,7 @@ export const mockCustomers: Customer[] = [
     company: 'Wonderland Inc.',
     hourlyRate: 30,
     profilePictureUrl: 'https://picsum.photos/seed/alice/100/100',
+    gender: 'female',
     createdAt: new Date(2023, 0, 15).toISOString(),
   },
   {
@@ -20,6 +21,7 @@ export const mockCustomers: Customer[] = [
     company: 'Builders Co.',
     hourlyRate: 25,
     profilePictureUrl: 'https://picsum.photos/seed/bob/100/100',
+    gender: 'male',
     createdAt: new Date(2023, 1, 20).toISOString(),
   },
   {
@@ -28,6 +30,7 @@ export const mockCustomers: Customer[] = [
     email: 'charlie@example.com',
     hourlyRate: 28,
     profilePictureUrl: 'https://picsum.photos/seed/charlie/100/100',
+    gender: 'male',
     createdAt: new Date(2023, 2, 10).toISOString(),
   },
   {
@@ -37,7 +40,18 @@ export const mockCustomers: Customer[] = [
     phone: '555-0104',
     company: 'Themyscira Corp.',
     hourlyRate: 35,
+    profilePictureUrl: 'https://picsum.photos/seed/diana/100/100', // Let's assume Diana has a custom pic
+    gender: 'female',
     createdAt: new Date(2023, 3, 5).toISOString(),
+  },
+  {
+    id: 'cust_5',
+    name: 'Edward Scissorhands',
+    email: 'edward@example.com',
+    hourlyRate: 22,
+    // profilePictureUrl: undefined, // Will use default based on gender
+    gender: 'male',
+    createdAt: new Date(2023, 4, 12).toISOString(),
   },
 ];
 

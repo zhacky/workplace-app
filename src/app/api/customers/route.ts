@@ -1,3 +1,4 @@
+
 // src/app/api/customers/route.ts
 import { NextResponse } from 'next/server';
 import type { Customer } from '@/lib/types';
@@ -51,21 +52,17 @@ export async function GET() {
 
   try {
     const customersRef = db.collection('customers');
-    // Order by name for consistent listing, can be changed to createdAt if preferred
     const snapshot = await customersRef.orderBy('name', 'asc').get(); 
 
     const customers: Customer[] = snapshot.docs.map(doc => {
       const data = doc.data();
-      // Ensure createdAt is a string. Firestore Timestamps are serialized to ISO strings by NextResponse.json,
-      // but explicit conversion here handles cases where it might already be a string or needs default.
       let createdAtString: string;
       if (data.createdAt instanceof admin.firestore.Timestamp) {
         createdAtString = data.createdAt.toDate().toISOString();
       } else if (typeof data.createdAt === 'string') {
         createdAtString = data.createdAt;
       } else {
-        // Fallback if createdAt is missing or not a Timestamp/string
-        createdAtString = new Date(0).toISOString(); // Or handle as an error
+        createdAtString = new Date(0).toISOString(); 
       }
 
       return {
@@ -76,6 +73,7 @@ export async function GET() {
         company: data.company || undefined,
         hourlyRate: data.hourlyRate || 0,
         profilePictureUrl: data.profilePictureUrl || `https://placehold.co/100x100.png`,
+        gender: data.gender || 'unknown',
         createdAt: createdAtString,
       };
     });
@@ -95,25 +93,28 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { name, email, phone, company, hourlyRate } = body;
+    const { name, email, phone, company, hourlyRate, gender } = body;
 
-    if (!name || !email || hourlyRate === undefined || isNaN(parseFloat(hourlyRate as string))) {
-      return NextResponse.json({ message: 'Missing or invalid required fields: name, email, hourlyRate (must be a number)' }, { status: 400 });
+    if (!name || !email || hourlyRate === undefined || isNaN(parseFloat(hourlyRate as string)) || !gender) {
+      return NextResponse.json({ message: 'Missing or invalid required fields: name, email, hourlyRate (must be a number), gender' }, { status: 400 });
+    }
+    
+    if (!['male', 'female', 'unknown'].includes(gender)) {
+        return NextResponse.json({ message: 'Invalid gender value. Must be one of: male, female, unknown.' }, { status: 400 });
     }
 
     const customerDataToSave = {
       name,
       email,
-      phone: phone || null, // Store null if undefined/empty for better querying in Firestore
-      company: company || null, // Store null if undefined/empty
+      phone: phone || null,
+      company: company || null,
       hourlyRate: parseFloat(hourlyRate as string),
+      gender,
       profilePictureUrl: `https://placehold.co/100x100.png`, // Default placeholder
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
     const docRef = await db.collection('customers').add(customerDataToSave);
-
-    // Fetch the newly created customer to return it with the Firestore-generated ID and resolved timestamp
     const newCustomerDoc = await docRef.get();
     const newCustomerData = newCustomerDoc.data();
 
@@ -122,12 +123,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'Failed to confirm customer creation.' }, { status: 500 });
     }
     
-    // Ensure createdAt is correctly typed and converted for the response
     let createdAtString: string;
     if (newCustomerData.createdAt instanceof admin.firestore.Timestamp) {
         createdAtString = newCustomerData.createdAt.toDate().toISOString();
     } else {
-        // This case is unlikely for a serverTimestamp but added for safety
         createdAtString = new Date().toISOString(); 
     }
 
@@ -135,9 +134,10 @@ export async function POST(request: Request) {
       id: docRef.id,
       name: newCustomerData.name,
       email: newCustomerData.email,
-      phone: newCustomerData.phone || undefined, // Convert null back to undefined for client if preferred
-      company: newCustomerData.company || undefined, // Convert null back to undefined for client
+      phone: newCustomerData.phone || undefined,
+      company: newCustomerData.company || undefined,
       hourlyRate: newCustomerData.hourlyRate,
+      gender: newCustomerData.gender,
       profilePictureUrl: newCustomerData.profilePictureUrl,
       createdAt: createdAtString,
     };
