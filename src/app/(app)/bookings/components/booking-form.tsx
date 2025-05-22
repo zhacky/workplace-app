@@ -3,7 +3,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,10 +27,11 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
-import type { Customer } from "@/lib/types";
+import type { Customer } from "@/lib/types"; // EnrichedBooking might be better if it includes customerRate
+import type { EnrichedBooking } from "./bookings-table"; // Assuming EnrichedBooking is exported
 import { fetchCustomers } from "@/lib/customer-api";
 import { CalendarIcon, ClockIcon } from "lucide-react";
-import { format, differenceInHours, set, isValid, differenceInMinutes } from "date-fns";
+import { format, differenceInMinutes, set, isValid, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -60,21 +61,29 @@ const timeOptions = Array.from({ length: 24 * 2 }, (_, i) => {
 });
 
 interface BookingFormProps {
-  onBookingCreated?: () => void;
+  initialData?: EnrichedBooking; // For editing
+  onSuccess?: () => void;
 }
 
-export function BookingForm({ onBookingCreated }: BookingFormProps) {
+export function BookingForm({ initialData, onSuccess }: BookingFormProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [calculatedCost, setCalculatedCost] = useState<number | null>(null);
   const [calculatedHours, setCalculatedHours] = useState<number | null>(null);
   const [minCalendarDate, setMinCalendarDate] = useState<Date | undefined>(undefined);
   const { toast } = useToast();
+  const isEditMode = !!initialData;
 
   const form = useForm<BookingFormValues>({
     resolver: zodResolver(bookingFormSchema),
-    defaultValues: {
+    defaultValues: initialData ? {
+      customerId: initialData.customerId,
+      bookingDate: initialData.bookingDate && isValid(parseISO(initialData.bookingDate)) ? parseISO(initialData.bookingDate) : new Date(),
+      startTime: initialData.startTime,
+      endTime: initialData.endTime,
+      notes: initialData.notes || "",
+    } : {
       customerId: "",
-      bookingDate: undefined,
+      bookingDate: undefined, // Will be set in useEffect
       startTime: "09:00",
       endTime: "10:00",
       notes: "",
@@ -84,11 +93,23 @@ export function BookingForm({ onBookingCreated }: BookingFormProps) {
   const { watch, setValue, setError, reset } = form;
 
   useEffect(() => {
-    const now = new Date();
-    setValue("bookingDate", now, { shouldValidate: true });
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    setMinCalendarDate(todayStart);
-  }, [setValue]);
+    if (!isEditMode) {
+      const now = new Date();
+      setValue("bookingDate", now, { shouldValidate: true });
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      setMinCalendarDate(todayStart);
+    } else if (initialData?.bookingDate) {
+        const initialDate = parseISO(initialData.bookingDate);
+        if (isValid(initialDate)) {
+            setValue("bookingDate", initialDate, {shouldValidate: true});
+        } else {
+            setValue("bookingDate", new Date(), {shouldValidate: true}); // Fallback
+        }
+        const todayStart = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+        setMinCalendarDate(todayStart); // Still restrict past dates for editing future bookings
+    }
+  }, [isEditMode, initialData, setValue]);
+  
 
   useEffect(() => {
     const loadCustomers = async () => {
@@ -145,55 +166,56 @@ export function BookingForm({ onBookingCreated }: BookingFormProps) {
       return;
     }
     
-    const bookingData = {
+    const bookingPayload = {
       ...values,
-      bookingDate: format(values.bookingDate, "yyyy-MM-dd"),
+      bookingDate: format(values.bookingDate, "yyyy-MM-dd"), // API expects string
       hours: calculatedHours,
       cost: calculatedCost,
+      id: isEditMode ? initialData?.id : undefined,
     };
 
     try {
       const response = await fetch('/api/bookings', {
-        method: 'POST',
+        method: isEditMode ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bookingData),
+        body: JSON.stringify(bookingPayload),
       });
 
       if (!response.ok) {
         const err = await response.json();
-        throw new Error(err.message || "Failed to create booking");
+        throw new Error(err.message || `Failed to ${isEditMode ? 'update' : 'create'} booking`);
       }
       
-      await response.json(); // const data = ...
+      await response.json(); 
 
       toast({
-        title: "Booking Created",
-        description: "The new booking has been successfully created.",
+        title: isEditMode ? "Booking Updated" : "Booking Created",
+        description: `The booking has been successfully ${isEditMode ? 'updated' : 'created'}.`,
       });
       
-      reset({ 
-        customerId: "", 
-        bookingDate: new Date(),
-        startTime: "09:00", 
-        endTime: "10:00", 
-        notes: "" 
-      });
-      setCalculatedCost(null);
-      setCalculatedHours(null);
+      if (!isEditMode) {
+        reset({ 
+          customerId: "", 
+          bookingDate: new Date(),
+          startTime: "09:00", 
+          endTime: "10:00", 
+          notes: "" 
+        });
+        setCalculatedCost(null);
+        setCalculatedHours(null);
+        const now = new Date();
+        setValue("bookingDate", now, { shouldValidate: true });
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        setMinCalendarDate(todayStart);
+      }
       
-      // Client-side date setup after reset
-      const now = new Date();
-      setValue("bookingDate", now, { shouldValidate: true });
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      setMinCalendarDate(todayStart);
-
-      onBookingCreated?.();
+      onSuccess?.();
 
     } catch (error: any) {
-      console.error("Error creating booking:", error);
+      console.error(`Error ${isEditMode ? 'updating' : 'creating'} booking:`, error);
       setError("root.serverError", { type: "manual", message: error.message });
       toast({
-        title: "Booking Failed",
+        title: `Booking ${isEditMode ? 'Update' : 'Creation'} Failed`,
         description: error.message || "An unexpected error occurred.",
         variant: "destructive",
       });
@@ -209,7 +231,7 @@ export function BookingForm({ onBookingCreated }: BookingFormProps) {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Customer</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value || ""}>
+              <Select onValueChange={field.onChange} value={field.value || ""} disabled={isEditMode && !!initialData?.customerId /* Optionally disable customer change on edit */}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a customer" />
@@ -360,7 +382,9 @@ export function BookingForm({ onBookingCreated }: BookingFormProps) {
           className="w-full" 
           disabled={form.formState.isSubmitting || calculatedCost === null || calculatedHours === null || calculatedHours <= 0}
         >
-          {form.formState.isSubmitting ? "Creating Booking..." : "Create Booking"}
+          {form.formState.isSubmitting 
+            ? (isEditMode ? "Updating Booking..." : "Creating Booking...") 
+            : (isEditMode ? "Update Booking" : "Create Booking")}
         </Button>
       </form>
     </Form>

@@ -18,11 +18,11 @@ import { PlusCircle } from "lucide-react";
 
 export default function BookingsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0); // To trigger table refresh
+  const [refreshKey, setRefreshKey] = useState(0); 
 
-  const handleBookingCreated = useCallback(() => {
+  const handleBookingFormSuccess = useCallback(() => {
     setIsFormOpen(false);
-    setRefreshKey(prevKey => prevKey + 1); // Increment key to re-fetch bookings
+    setRefreshKey(prevKey => prevKey + 1); 
   }, []);
 
   return (
@@ -31,7 +31,7 @@ export default function BookingsPage() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Hourly Bookings</h1>
           <p className="text-muted-foreground">
-            View and manage hourly bookings for customers at The Workplace.
+            Manage workspace bookings. Edit or delete existing bookings, or create new ones.
           </p>
         </div>
         <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
@@ -48,7 +48,8 @@ export default function BookingsPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
-              <BookingForm onBookingCreated={handleBookingCreated} />
+              {/* Pass null or undefined for initialData to indicate create mode */}
+              <BookingForm onSuccess={handleBookingFormSuccess} />
             </div>
           </DialogContent>
         </Dialog>

@@ -2,8 +2,7 @@
 // src/app/(app)/bookings/components/bookings-table.tsx
 'use client';
 
-import { useState, useEffect, useCallback }
-from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Info } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { cn } from '@/lib/utils';
+import { BookingActions } from "./booking-actions"; // Import BookingActions
 
 interface BookingFromAPI {
   id: string;
@@ -25,16 +25,19 @@ interface BookingFromAPI {
   hours: number;
   cost: number;
   notes?: string;
-  createdAt?: string | admin.firestore.Timestamp; // Can be ISO string or Timestamp before serialization
+  createdAt?: string | admin.firestore.Timestamp; 
+  updatedAt?: string | admin.firestore.Timestamp; 
 }
 
-interface EnrichedBooking extends Omit<BookingFromAPI, 'createdAt'> {
+export interface EnrichedBooking extends Omit<BookingFromAPI, 'createdAt' | 'updatedAt'> {
   customerName?: string;
-  createdAt?: string; // Ensured to be string after processing
+  customerHourlyRate?: number; // Useful for edit form if customer details are not re-fetched
+  createdAt?: string; 
+  updatedAt?: string;
 }
 
 interface BookingsTableProps {
-  refreshKey: number; // Used to trigger re-fetch
+  refreshKey: number; 
 }
 
 export function BookingsTable({ refreshKey }: BookingsTableProps) {
@@ -45,7 +48,6 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
   const [currentDateTime, setCurrentDateTime] = useState<Date | null>(null);
 
   useEffect(() => {
-    // Set currentDateTime only on the client after hydration
     setCurrentDateTime(new Date());
   }, [refreshKey]);
 
@@ -62,25 +64,34 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
         const errorText = bookingsResponse.statusText || `HTTP error status: ${bookingsResponse.status}`;
         throw new Error(`Error fetching bookings: ${errorText}`);
       }
-      // The API returns createdAt as an ISO string due to NextResponse.json()
       const bookingsDataFromAPI: BookingFromAPI[] = await bookingsResponse.json();
       
       setCustomers(customersData);
-      const customerMap = new Map(customersData.map(c => [c.id, c.name]));
+      const customerMap = new Map(customersData.map(c => [c.id, {name: c.name, hourlyRate: c.hourlyRate}]));
 
       const enrichedBookingsData: EnrichedBooking[] = bookingsDataFromAPI.map(b => {
         let createdAtString: string | undefined = undefined;
         if (typeof b.createdAt === 'string') {
           createdAtString = b.createdAt;
         } else if (b.createdAt && typeof (b.createdAt as any).toDate === 'function') {
-          // This case handles if somehow a raw Timestamp object leaks through, though unlikely with NextResponse.json
           createdAtString = (b.createdAt as any).toDate().toISOString();
         }
+        
+        let updatedAtString: string | undefined = undefined;
+        if (typeof b.updatedAt === 'string') {
+          updatedAtString = b.updatedAt;
+        } else if (b.updatedAt && typeof (b.updatedAt as any).toDate === 'function') {
+          updatedAtString = (b.updatedAt as any).toDate().toISOString();
+        }
+        
+        const customerDetails = customerMap.get(b.customerId);
 
         return {
           ...b,
-          customerName: customerMap.get(b.customerId) || b.customerId,
+          customerName: customerDetails?.name || b.customerId,
+          customerHourlyRate: customerDetails?.hourlyRate,
           createdAt: createdAtString,
+          updatedAt: updatedAtString,
         };
       });
       
@@ -98,11 +109,13 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
     fetchBookingsAndCustomers();
   }, [fetchBookingsAndCustomers, refreshKey]);
 
+  const handleActionComplete = () => {
+    fetchBookingsAndCustomers(); // Re-fetch data when an action (edit/delete) is completed
+  };
+
   const getBookingStatus = (booking: EnrichedBooking, now: Date | null): 'past' | 'ongoing' | 'future' | 'unknown' => {
     if (!now || !booking.bookingDate || !booking.startTime || !booking.endTime) return 'unknown';
     try {
-      // bookingDate is "yyyy-MM-dd", so parseISO should be fine if it's a valid date string.
-      // However, API might send malformed data, so robustness is key.
       const bookingDateObj = parseISO(booking.bookingDate); 
       if (!isValid(bookingDateObj)) {
         console.warn(`Invalid bookingDate string for booking ${booking.id}: ${booking.bookingDate}`);
@@ -124,13 +137,12 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
       if (isAfter(bookingStartDateTime, now)) return 'future';
       if (isAfter(now, bookingStartDateTime) && isBefore(now, bookingEndDateTime)) return 'ongoing';
       
-      return 'unknown';
+      return 'unknown'; // Should not happen if logic is correct
     } catch (e) {
       console.error("Error determining booking status for booking " + booking.id + ":", e);
       return 'unknown';
     }
   };
-
 
   if (loading) {
     return (
@@ -141,8 +153,8 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
+            {[...Array(5)].map((_, i) => ( // Increased skeleton rows
+              <Skeleton key={i} className="h-12 w-full rounded-md" />
             ))}
           </div>
         </CardContent>
@@ -182,7 +194,7 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
         <CardHeader>
           <CardTitle>Bookings List</CardTitle>
           <CardDescription>
-            Showing {bookings.length} recent bookings. Current time: {currentDateTime ? format(currentDateTime, 'Pp') : 'Loading...'}
+            Showing {bookings.length} bookings. Current time: {currentDateTime ? format(currentDateTime, 'Pp') : 'Loading...'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -195,31 +207,36 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
                 <TableHead className="text-center">Duration</TableHead>
                 <TableHead className="text-right">Cost</TableHead>
                 <TableHead className="text-center">Notes</TableHead>
-                <TableHead className="text-right">Created On</TableHead>
+                <TableHead className="text-center hidden md:table-cell">Status</TableHead>
+                <TableHead className="text-right hidden lg:table-cell">Created/Updated</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {bookings.map(booking => {
-                let formattedCreatedAt = 'N/A';
-                if (typeof booking.createdAt === 'string' && booking.createdAt.length > 0) {
+                let formattedDateTime = 'N/A';
+                const targetDateString = booking.updatedAt || booking.createdAt;
+
+                if (typeof targetDateString === 'string' && targetDateString.length > 0) {
                   try {
-                    const parsedDate = parseISO(booking.createdAt);
+                    const parsedDate = parseISO(targetDateString);
                     if (isValid(parsedDate)) {
-                       formattedCreatedAt = format(parsedDate, "MMM d, yyyy, p");
+                       formattedDateTime = format(parsedDate, "MMM d, yy, p");
                     } else {
-                      console.warn(`Invalid 'createdAt' date string for booking ${booking.id}: ${booking.createdAt}`);
+                      console.warn(`Invalid date string for booking ${booking.id}: ${targetDateString}`);
                     }
                   } catch (e) {
-                    console.error(`Error parsing 'createdAt' date for booking ${booking.id}: ${booking.createdAt}`, e);
+                    console.error(`Error parsing date for booking ${booking.id}: ${targetDateString}`, e);
                   }
-                } else if (booking.createdAt) {
-                    console.warn(`'createdAt' for booking ${booking.id} is not a non-empty string:`, booking.createdAt);
+                } else if (targetDateString) {
+                    console.warn(`Timestamp for booking ${booking.id} is not a non-empty string:`, targetDateString);
                 }
                 
                 const status = getBookingStatus(booking, currentDateTime);
                 const rowClasses = cn({
                   'opacity-60': status === 'past',
-                  'bg-primary/5 text-primary-foreground': status === 'ongoing', // Updated class for ongoing
+                  'bg-primary/10': status === 'ongoing',
+                  // Future bookings use default styling
                 });
 
                 return (
@@ -239,7 +256,7 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
                             <Info className="h-4 w-4 text-muted-foreground" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-xs bg-popover text-popover-foreground border shadow-md">
+                        <TooltipContent side="top" className="max-w-xs bg-popover text-popover-foreground border shadow-md rounded-md p-2">
                           <p>{booking.notes}</p>
                         </TooltipContent>
                       </Tooltip>
@@ -247,7 +264,24 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
                       <span className="text-muted-foreground">-</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">{formattedCreatedAt}</TableCell>
+                  <TableCell className="text-center hidden md:table-cell">
+                    <Badge variant={status === 'ongoing' ? 'default' : status === 'past' ? 'outline' : 'secondary'} 
+                           className={cn("capitalize", {
+                             'bg-green-100 text-green-800 border-green-300': status === 'ongoing',
+                             'bg-blue-100 text-blue-800 border-blue-300': status === 'future',
+                             'bg-gray-100 text-gray-600 border-gray-300': status === 'past',
+                             'bg-yellow-100 text-yellow-800 border-yellow-300': status === 'unknown',
+                           })}>
+                      {status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right hidden lg:table-cell text-xs text-muted-foreground">
+                    {formattedDateTime}
+                    {booking.updatedAt && <Badge variant="outline" className="ml-1 text-xs p-0.5 px-1">Edited</Badge>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <BookingActions booking={booking} onActionComplete={handleActionComplete} />
+                  </TableCell>
                 </TableRow>
               )})}
             </TableBody>
@@ -258,6 +292,4 @@ export function BookingsTable({ refreshKey }: BookingsTableProps) {
   );
 }
 
-// Make sure to import Firestore types if you expect Timestamp objects,
-// though NextResponse.json usually serializes them.
-// import type admin from 'firebase-admin';
+import type admin from 'firebase-admin';
