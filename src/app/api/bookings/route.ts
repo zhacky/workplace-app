@@ -71,8 +71,13 @@ export async function POST(request: Request) {
 
 export async function GET(request: NextRequest) {
   if (!db) {
-    console.warn("Firestore is not initialized. Returning empty bookings list.");
-    return NextResponse.json([], { status: 200 });
+    console.warn("Firestore is not initialized. Returning empty bookings list or 503.");
+    const customerId = request.nextUrl.searchParams.get('customerId');
+     if (customerId) {
+        // If specific customer bookings are requested and DB is not available, it's a server issue.
+        return NextResponse.json({ message: 'Service unavailable: Database not configured for bookings.' }, { status: 503 });
+    }
+    return NextResponse.json([], { status: 200 }); // For general list, return empty if DB not ready.
   }
 
   try {
@@ -81,9 +86,12 @@ export async function GET(request: NextRequest) {
 
     if (customerId) {
       query = query.where('customerId', '==', customerId);
+      // When filtering by customerId, we remove orderBy('createdAt') here to avoid needing a composite index by default.
+      // The client fetching specific customer bookings will handle sorting.
+    } else {
+      query = query.orderBy('createdAt', 'desc'); // For the general bookings list, keep server-side sorting.
     }
     
-    query = query.orderBy('createdAt', 'desc');
     const snapshot = await query.get();
 
     const bookings = snapshot.docs.map(doc => {
@@ -91,7 +99,7 @@ export async function GET(request: NextRequest) {
       // Ensure createdAt is serialized to ISO string if it's a Timestamp
       const createdAt = data.createdAt instanceof admin.firestore.Timestamp 
                         ? data.createdAt.toDate().toISOString() 
-                        : data.createdAt;
+                        : (typeof data.createdAt === 'string' ? data.createdAt : undefined);
       return {
         id: doc.id,
         ...data,
@@ -106,4 +114,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: `Error fetching booking data: ${errorMessage}` }, { status: 500 });
   }
 }
-
