@@ -12,15 +12,16 @@ export interface Customer {
 }
 
 export interface Booking {
-  id: string;
+  id:string;
   customerId: string;
-  customerName: string; // Denormalized for easier display
-  startTime: string; // ISO date string
-  endTime: string; // ISO date string
+  bookingDate: string; // "yyyy-MM-dd"
+  startTime: string; // "HH:mm"
+  endTime: string; // "HH:mm"
   hours: number;
-  totalAmount: number; // Note: API and other parts use 'cost'. This might need alignment.
+  cost: number;
   notes?: string;
-  createdAt: string; // ISO date string
+  createdAt?: string; 
+  updatedAt?: string;
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
@@ -44,5 +45,12 @@ export interface Invoice {
   items: InvoiceItem[];
   createdAt: string; // ISO date string
   updatedAt?: string; // ISO date string
+}
+
+export interface CompanySettings {
+  companyName: string;
+  companyAddress: string;
+  companyContact: string;
+  paymentInstructions: string;
 }
 

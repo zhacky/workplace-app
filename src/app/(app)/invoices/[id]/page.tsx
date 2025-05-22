@@ -8,11 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { Invoice, Customer, InvoiceStatus } from "@/lib/types";
+import type { Invoice, Customer, InvoiceStatus, CompanySettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, Download, Printer, CreditCard, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useParams, notFound as navigateNotFound } from "next/navigation"; // Renamed to avoid conflict
+import { useParams, notFound as navigateNotFound } from "next/navigation";
 import { format, parseISO, isValid } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,6 +35,13 @@ const getStatusBadgeClasses = (status?: InvoiceStatus) => {
     }
 };
 
+const defaultCompanySettings: CompanySettings = {
+  companyName: "The Workplace",
+  companyAddress: "123 Main Street, Anytown, USA",
+  companyContact: "contact@theworkplace.com",
+  paymentInstructions: "Please make payments to Workplace Bank, Account #123456789.",
+};
+
 export default function InvoiceDetailPage() {
   const params = useParams();
   const invoiceId = params.id as string;
@@ -42,25 +49,38 @@ export default function InvoiceDetailPage() {
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [companySettings, setCompanySettings] = useState<CompanySettings>(defaultCompanySettings);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  const fetchInvoiceAndCustomer = useCallback(async () => {
+  const fetchInvoiceData = useCallback(async () => {
     if (!invoiceId) return;
     setIsLoading(true);
     setError(null);
     try {
-      const invoiceRes = await fetch(`/api/invoices?id=${invoiceId}`);
+      const [invoiceRes, settingsRes] = await Promise.all([
+        fetch(`/api/invoices?id=${invoiceId}`),
+        fetch('/api/settings')
+      ]);
+
       if (!invoiceRes.ok) {
         if (invoiceRes.status === 404) {
-          navigateNotFound(); // Trigger Next.js notFound
+          navigateNotFound(); 
           return;
         }
         throw new Error(`Failed to fetch invoice: ${invoiceRes.statusText}`);
       }
       const invoiceData: Invoice = await invoiceRes.json();
       setInvoice(invoiceData);
+
+      if (settingsRes.ok) {
+        const settingsData: CompanySettings = await settingsRes.json();
+        setCompanySettings(settingsData);
+      } else {
+        console.warn("Could not fetch company settings, using defaults.");
+        setCompanySettings(defaultCompanySettings);
+      }
 
       if (invoiceData.customerId) {
         const customerRes = await fetch(`/api/customers?id=${invoiceData.customerId}`);
@@ -69,7 +89,7 @@ export default function InvoiceDetailPage() {
           setCustomer(customerData);
         } else {
           console.warn(`Could not fetch customer ${invoiceData.customerId}`);
-          setCustomer(null); // Set customer to null if fetch fails but invoice is present
+          setCustomer(null);
         }
       }
     } catch (err: any) {
@@ -81,18 +101,50 @@ export default function InvoiceDetailPage() {
   }, [invoiceId]);
 
   useEffect(() => {
-    fetchInvoiceAndCustomer();
-  }, [fetchInvoiceAndCustomer]);
+    fetchInvoiceData();
+  }, [fetchInvoiceData]);
 
   const handlePrint = () => {
     window.print();
   };
 
   const handleDownloadPdf = () => {
-    window.open(window.location.href, '_blank');
+    // Simulating PDF generation by opening in a new tab
+    // In a real app, this would trigger a PDF generation service or library
+    const pdfWindow = window.open('', '_blank');
+    if (pdfWindow) {
+      pdfWindow.document.write('<html><head><title>Invoice PDF</title>');
+      // It's non-trivial to clone stylesheets perfectly. For a simple preview:
+      const styles = Array.from(document.styleSheets)
+        .map(styleSheet => {
+          try {
+            return Array.from(styleSheet.cssRules)
+              .map(rule => rule.cssText)
+              .join('');
+          } catch (e) {
+            // For external stylesheets, cssRules might be null due to CORS
+            if (styleSheet.href) {
+              return `<link rel="stylesheet" href="${styleSheet.href}">`;
+            }
+            return '';
+          }
+        })
+        .join('\n');
+      pdfWindow.document.write(`<style>${styles}</style></head><body>`);
+      const invoiceElement = document.querySelector('.print-container');
+      if (invoiceElement) {
+        pdfWindow.document.write(invoiceElement.innerHTML);
+      } else {
+        pdfWindow.document.write('Could not find invoice content to print.');
+      }
+      pdfWindow.document.write('</body></html>');
+      pdfWindow.document.close(); // Important for some browsers
+      pdfWindow.focus(); // Try to focus the new tab
+      // pdfWindow.print(); // Optionally trigger print dialog in new tab
+    }
     toast({
-      title: "Displaying Invoice",
-      description: "Showing invoice content in a new tab. For actual PDF generation, further integration would be needed.",
+      title: "Displaying Invoice for Download",
+      description: "Showing invoice content in a new tab. For actual PDF generation, server-side rendering or a library is recommended.",
     });
   };
 
@@ -112,7 +164,7 @@ export default function InvoiceDetailPage() {
       }
       
       const updatedInvoiceData = await response.json();
-      setInvoice(updatedInvoiceData); // Update local state with the full updated invoice
+      setInvoice(updatedInvoiceData); 
 
       toast({
         title: "Payment Processed",
@@ -163,7 +215,6 @@ export default function InvoiceDetailPage() {
   }
 
   if (!invoice) {
-    // This case should ideally be handled by navigateNotFound() in fetch, but as a fallback:
     return <div className="text-center py-10">Invoice not found.</div>;
   }
   
@@ -172,7 +223,7 @@ export default function InvoiceDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden">
         <Button variant="outline" asChild>
           <Link href="/invoices">
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -203,9 +254,9 @@ export default function InvoiceDetailPage() {
               <p className="text-muted-foreground">#{invoice.invoiceNumber}</p>
             </div>
             <div className="text-left md:text-right">
-              <h2 className="text-xl font-semibold text-foreground">The Workplace</h2>
-              <p className="text-sm text-muted-foreground">123 Main Street, Anytown, USA</p>
-              <p className="text-sm text-muted-foreground">contact@theworkplace.com</p>
+              <h2 className="text-xl font-semibold text-foreground">{companySettings.companyName}</h2>
+              <p className="text-sm text-muted-foreground whitespace-pre-line">{companySettings.companyAddress}</p>
+              <p className="text-sm text-muted-foreground">{companySettings.companyContact}</p>
             </div>
           </div>
           <Separator className="my-4" />
@@ -266,16 +317,17 @@ export default function InvoiceDetailPage() {
             </div>
           </div>
         </CardContent>
-        <CardFooter className="bg-muted/30 p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+        <CardFooter className="bg-muted/30 p-6 flex flex-col md:flex-row justify-between items-start gap-4">
           <div>
             <p className="text-sm font-semibold text-muted-foreground">Payment Status:</p>
             <Badge className={cn("text-base capitalize px-3 py-1", getStatusBadgeClasses(invoice.status))}>
               {invoice.status}
             </Badge>
           </div>
-          <p className="text-xs text-muted-foreground text-center md:text-right">
-            Thank you for your business! <br/> Please make payments to Workplace Bank, Account #123456789.
-          </p>
+          <div className="text-xs text-muted-foreground text-center md:text-right">
+            <p className="font-semibold">Payment Instructions:</p>
+            <p className="whitespace-pre-line">{companySettings.paymentInstructions}</p>
+          </div>
         </CardFooter>
       </Card>
       <style jsx global>{`
@@ -294,25 +346,21 @@ export default function InvoiceDetailPage() {
             max-width: 100%;
             box-shadow: none !important;
             border: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
-          /* Add any other print-specific styles here */
-          .print-container .bg-muted\\/30 { /* Example for removing background colors on print */
+          .print-container .bg-muted\\/30 {
             background-color: transparent !important;
           }
-           .print-container button, .print-container a[href="/invoices"] {
-            display: none !important; /* Hide buttons on print */
-          }
-          .print-container .flex.flex-wrap.gap-2, .print-container .flex.items-center.justify-between > .flex.gap-2 {
-            display: none !important; /* Hide button containers */
-          }
-           .print-container .flex.items-center.justify-between a[href="/invoices"] {
-            display: none !important; /* Hides the "Back to Invoices" button specifically */
-          }
           .print-container .text-primary {
-            color: black !important; /* Ensure primary text is black for printing */
+            color: black !important;
+          }
+          .print\\:hidden {
+             display: none !important;
           }
         }
       `}</style>
     </div>
   );
 }
+

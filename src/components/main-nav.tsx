@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -16,6 +17,7 @@ import {
   BarChart3,
   MessageSquareHeart,
   Briefcase,
+  Settings, // Added Settings icon
 } from 'lucide-react';
 import { Logo } from './logo';
 
@@ -26,6 +28,7 @@ const navItems = [
   { href: '/invoices', label: 'Invoices', icon: FileText },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/satisfaction', label: 'Satisfaction Analysis', icon: MessageSquareHeart },
+  { href: '/settings', label: 'Settings', icon: Settings }, // Added Settings item
 ];
 
 export function MainNav() {
