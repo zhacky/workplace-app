@@ -2,7 +2,7 @@
 // src/app/(app)/invoices/components/invoice-table.tsx
 "use client";
 
-import type { Invoice, InvoiceStatus } from "@/lib/types";
+import type { Invoice, InvoiceStatus, Customer } from "@/lib/types";
 import {
   Table,
   TableBody,
@@ -13,17 +13,18 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { InvoiceActions } from "./invoice-actions";
-import { format } from "date-fns";
+import { format, parseISO, isValid } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
-import { mockInvoices } from "@/lib/mock-data"; // Import mock data for initial state
 
 interface InvoiceTableProps {
-  initialInvoices: Invoice[]; // Prop for initial data, can be fetched server-side
+  initialInvoices: Invoice[];
+  customers: Customer[]; // Added customers prop
 }
 
-export function InvoiceTable({ initialInvoices }: InvoiceTableProps) {
+export function InvoiceTable({ initialInvoices, customers }: InvoiceTableProps) {
   const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
+  const customerMap = new Map(customers.map(c => [c.id, c.name]));
 
   useEffect(() => {
     setInvoices(initialInvoices);
@@ -33,15 +34,15 @@ export function InvoiceTable({ initialInvoices }: InvoiceTableProps) {
   const getStatusBadgeVariant = (status: InvoiceStatus) => {
     switch (status) {
       case "paid":
-        return "default"; // Will use primary color (red) if not overridden
+        return "default"; 
       case "sent":
-        return "secondary"; // Will use secondary color (light gray)
+        return "secondary"; 
       case "draft":
         return "outline";
       case "overdue":
         return "destructive";
       case "cancelled":
-        return "outline"; // Or a specific greyed out style
+        return "outline"; 
       default:
         return "default";
     }
@@ -50,7 +51,7 @@ export function InvoiceTable({ initialInvoices }: InvoiceTableProps) {
   const getStatusBadgeClasses = (status: InvoiceStatus) => {
     switch (status) {
       case 'paid':
-        return 'bg-green-500/20 text-green-700 border-green-500/30 hover:bg-green-500/30'; // Custom green for "paid"
+        return 'bg-green-500/20 text-green-700 border-green-500/30 hover:bg-green-500/30';
       case 'sent':
         return 'bg-blue-500/20 text-blue-700 border-blue-500/30 hover:bg-blue-500/30';
       case 'draft':
@@ -65,11 +66,26 @@ export function InvoiceTable({ initialInvoices }: InvoiceTableProps) {
   };
 
   const handleStatusChange = (invoiceId: string, newStatus: InvoiceStatus) => {
+    // TODO: In a real app, this should also make an API call to update the backend
     setInvoices(prevInvoices => 
       prevInvoices.map(inv => 
         inv.id === invoiceId ? { ...inv, status: newStatus } : inv
       )
     );
+  };
+
+  const formatDateSafe = (dateString: string | undefined) => {
+    if (!dateString) return 'N/A';
+    try {
+      const parsedDate = parseISO(dateString);
+      if (isValid(parsedDate)) {
+        return format(parsedDate, "MMM d, yyyy");
+      }
+    } catch (e) {
+      // If parseISO throws (e.g., invalid format), catch and log
+      console.error(`Error parsing date string "${dateString}":`, e);
+    }
+    return 'Invalid Date';
   };
 
 
@@ -90,9 +106,9 @@ export function InvoiceTable({ initialInvoices }: InvoiceTableProps) {
         {invoices.map((invoice) => (
           <TableRow key={invoice.id}>
             <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
-            <TableCell>{invoice.customerName}</TableCell>
-            <TableCell>{format(new Date(invoice.issueDate), "MMM d, yyyy")}</TableCell>
-            <TableCell>{format(new Date(invoice.dueDate), "MMM d, yyyy")}</TableCell>
+            <TableCell>{customerMap.get(invoice.customerId) || invoice.customerName || 'N/A'}</TableCell>
+            <TableCell>{formatDateSafe(invoice.issueDate)}</TableCell>
+            <TableCell>{formatDateSafe(invoice.dueDate)}</TableCell>
             <TableCell className="text-right">₱{invoice.amount.toFixed(2)}</TableCell>
             <TableCell className="text-center">
               <Badge 
@@ -111,3 +127,4 @@ export function InvoiceTable({ initialInvoices }: InvoiceTableProps) {
     </Table>
   );
 }
+

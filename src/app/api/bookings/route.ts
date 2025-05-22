@@ -1,5 +1,5 @@
 
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import admin from 'firebase-admin';
 import type { App } from 'firebase-admin/app';
 
@@ -69,26 +69,41 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!db) {
     console.warn("Firestore is not initialized. Returning empty bookings list.");
-    // Return an empty array, client will handle "No bookings found"
     return NextResponse.json([], { status: 200 });
   }
 
   try {
-    const bookingsRef = db.collection('bookings');
-    const snapshot = await bookingsRef.orderBy('createdAt', 'desc').get();
+    const customerId = request.nextUrl.searchParams.get('customerId');
+    let query: admin.firestore.Query = db.collection('bookings');
 
-    const bookings = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    if (customerId) {
+      query = query.where('customerId', '==', customerId);
+    }
+    
+    query = query.orderBy('createdAt', 'desc');
+    const snapshot = await query.get();
+
+    const bookings = snapshot.docs.map(doc => {
+      const data = doc.data();
+      // Ensure createdAt is serialized to ISO string if it's a Timestamp
+      const createdAt = data.createdAt instanceof admin.firestore.Timestamp 
+                        ? data.createdAt.toDate().toISOString() 
+                        : data.createdAt;
+      return {
+        id: doc.id,
+        ...data,
+        createdAt, // Override with serialized version
+      };
+    });
 
     return NextResponse.json(bookings, { status: 200 });
   } catch (error) {
     console.error("Error fetching booking data from Firebase:", error);
-    // Return an error response that the client can potentially handle or display
-    return NextResponse.json({ message: 'Error fetching booking data from the database.' }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+    return NextResponse.json({ message: `Error fetching booking data: ${errorMessage}` }, { status: 500 });
   }
 }
+

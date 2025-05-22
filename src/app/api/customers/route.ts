@@ -1,6 +1,6 @@
 
 // src/app/api/customers/route.ts
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import type { Customer } from '@/lib/types';
 import admin from 'firebase-admin';
 import type { App } from 'firebase-admin/app';
@@ -44,45 +44,58 @@ if (projectId && clientEmail && privateKey) {
   );
 }
 
-export async function GET() {
+const serializeCustomer = (doc: admin.firestore.DocumentSnapshot): Customer => {
+    const data = doc.data()!;
+    let createdAtString: string;
+    if (data.createdAt instanceof admin.firestore.Timestamp) {
+      createdAtString = data.createdAt.toDate().toISOString();
+    } else if (typeof data.createdAt === 'string') {
+      createdAtString = data.createdAt;
+    } else {
+      createdAtString = new Date(0).toISOString(); 
+    }
+    return {
+      id: doc.id,
+      name: data.name || '',
+      email: data.email || '',
+      phone: data.phone || undefined,
+      company: data.company || undefined,
+      hourlyRate: data.hourlyRate || 0,
+      profilePictureUrl: data.profilePictureUrl || `https://placehold.co/100x100.png`,
+      gender: data.gender || 'unknown',
+      createdAt: createdAtString,
+    };
+};
+
+export async function GET(request: NextRequest) {
   if (!db) {
-    console.warn("Firestore is not initialized for customers. Returning empty list.");
+    console.warn("Firestore is not initialized for customers. Returning empty list or 404.");
+    const customerId = request.nextUrl.searchParams.get('id');
+    if (customerId) {
+        return NextResponse.json({ message: 'Service unavailable: Database not configured for customers.' }, { status: 503 });
+    }
     return NextResponse.json([], { status: 200 });
   }
 
   try {
-    const customersRef = db.collection('customers');
-    const snapshot = await customersRef.orderBy('name', 'asc').get(); 
+    const customerId = request.nextUrl.searchParams.get('id');
 
-    const customers: Customer[] = snapshot.docs.map(doc => {
-      const data = doc.data();
-      let createdAtString: string;
-      if (data.createdAt instanceof admin.firestore.Timestamp) {
-        createdAtString = data.createdAt.toDate().toISOString();
-      } else if (typeof data.createdAt === 'string') {
-        createdAtString = data.createdAt;
-      } else {
-        // Fallback for older data or if createdAt is missing
-        createdAtString = new Date(0).toISOString(); 
+    if (customerId) {
+      const customerDoc = await db.collection('customers').doc(customerId).get();
+      if (!customerDoc.exists) {
+        return NextResponse.json({ message: 'Customer not found' }, { status: 404 });
       }
-
-      return {
-        id: doc.id,
-        name: data.name || '',
-        email: data.email || '',
-        phone: data.phone || undefined,
-        company: data.company || undefined,
-        hourlyRate: data.hourlyRate || 0,
-        profilePictureUrl: data.profilePictureUrl || `https://placehold.co/100x100.png`,
-        gender: data.gender || 'unknown',
-        createdAt: createdAtString,
-      };
-    });
-
-    return NextResponse.json(customers, { status: 200 });
+      return NextResponse.json(serializeCustomer(customerDoc), { status: 200 });
+    } else {
+      const customersRef = db.collection('customers');
+      const snapshot = await customersRef.orderBy('name', 'asc').get(); 
+      const customers: Customer[] = snapshot.docs.map(serializeCustomer);
+      return NextResponse.json(customers, { status: 200 });
+    }
   } catch (error) {
     console.error("Error fetching customer data from Firebase:", error);
-    return NextResponse.json({ message: 'Error fetching customer data from the database.' }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+    return NextResponse.json({ message: `Error fetching customer data: ${errorMessage}` }, { status: 500 });
   }
 }
 
@@ -117,34 +130,13 @@ export async function POST(request: Request) {
 
     const docRef = await db.collection('customers').add(customerDataToSave);
     const newCustomerDoc = await docRef.get();
-    const newCustomerData = newCustomerDoc.data();
-
-    if (!newCustomerData) {
+    
+    if (!newCustomerDoc.exists) {
       console.error("Failed to retrieve document data for newly created customer:", docRef.id);
       return NextResponse.json({ message: 'Failed to confirm customer creation.' }, { status: 500 });
     }
     
-    let createdAtString: string;
-    if (newCustomerData.createdAt instanceof admin.firestore.Timestamp) {
-        createdAtString = newCustomerData.createdAt.toDate().toISOString();
-    } else {
-        // Should not happen for new docs with serverTimestamp, but as a fallback
-        createdAtString = new Date().toISOString(); 
-    }
-
-    const newCustomer: Customer = {
-      id: docRef.id,
-      name: newCustomerData.name,
-      email: newCustomerData.email,
-      phone: newCustomerData.phone || undefined,
-      company: newCustomerData.company || undefined,
-      hourlyRate: newCustomerData.hourlyRate,
-      gender: newCustomerData.gender,
-      profilePictureUrl: newCustomerData.profilePictureUrl,
-      createdAt: createdAtString,
-    };
-
-    return NextResponse.json(newCustomer, { status: 201 });
+    return NextResponse.json(serializeCustomer(newCustomerDoc), { status: 201 });
   } catch (error) {
     console.error("Error adding customer to Firebase:", error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
@@ -172,8 +164,6 @@ export async function PUT(request: Request) {
         return NextResponse.json({ message: 'Invalid gender value.' }, { status: 400 });
     }
 
-    // Construct object with only the fields to be updated
-    // We don't update createdAt or profilePictureUrl via this form
     const customerDataToUpdate: Partial<Omit<Customer, 'id' | 'createdAt' | 'profilePictureUrl'>> = {
       name,
       email,
@@ -187,34 +177,12 @@ export async function PUT(request: Request) {
     await docRef.update(customerDataToUpdate);
 
     const updatedCustomerDoc = await docRef.get();
-    const updatedCustomerData = updatedCustomerDoc.data();
 
-    if (!updatedCustomerData) {
-      return NextResponse.json({ message: 'Failed to retrieve updated customer data.' }, { status: 500 });
+    if (!updatedCustomerDoc.exists) {
+      return NextResponse.json({ message: 'Failed to retrieve updated customer data (customer might have been deleted).' }, { status: 404 });
     }
 
-    let createdAtString: string;
-    if (updatedCustomerData.createdAt instanceof admin.firestore.Timestamp) {
-        createdAtString = updatedCustomerData.createdAt.toDate().toISOString();
-    } else if (typeof updatedCustomerData.createdAt === 'string') {
-        createdAtString = updatedCustomerData.createdAt;
-    } else {
-        createdAtString = new Date(0).toISOString();
-    }
-
-    const updatedCustomer: Customer = {
-      id: docRef.id,
-      name: updatedCustomerData.name,
-      email: updatedCustomerData.email,
-      phone: updatedCustomerData.phone || undefined,
-      company: updatedCustomerData.company || undefined,
-      hourlyRate: updatedCustomerData.hourlyRate,
-      gender: updatedCustomerData.gender,
-      profilePictureUrl: updatedCustomerData.profilePictureUrl, // Keep existing
-      createdAt: createdAtString,
-    };
-
-    return NextResponse.json(updatedCustomer, { status: 200 });
+    return NextResponse.json(serializeCustomer(updatedCustomerDoc), { status: 200 });
   } catch (error) {
     console.error("Error updating customer in Firebase:", error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
@@ -243,3 +211,4 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ message: `Error deleting customer: ${errorMessage}` }, { status: 500 });
   }
 }
+

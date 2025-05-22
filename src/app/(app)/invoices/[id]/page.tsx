@@ -4,13 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { mockInvoices, mockCustomers } from "@/lib/mock-data";
 import type { Invoice, Customer, InvoiceStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, Download, Mail, Printer, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 
 interface InvoiceDetailPageProps {
   params: { id: string };
@@ -33,13 +32,38 @@ const getStatusBadgeClasses = (status: InvoiceStatus) => {
     }
 };
 
+async function getInvoice(id: string): Promise<Invoice | null> {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002'}/api/invoices?id=${id}`, { cache: 'no-store' });
+    if (!res.ok) {
+        if (res.status === 404) return null;
+        console.error(`Failed to fetch invoice ${id}: ${res.status} ${res.statusText}`);
+        throw new Error('Failed to fetch invoice');
+    }
+    return res.json();
+}
+
+async function getCustomer(id: string): Promise<Customer | null> {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002'}/api/customers?id=${id}`, { cache: 'no-store' });
+    if (!res.ok) {
+        if (res.status === 404) return null;
+        console.error(`Failed to fetch customer ${id}: ${res.status} ${res.statusText}`);
+        // Don't throw, allow invoice to render without full customer details if needed
+        return null; 
+    }
+    return res.json();
+}
+
+
 export default async function InvoiceDetailPage({ params }: InvoiceDetailPageProps) {
-  const invoice = mockInvoices.find((inv) => inv.id === params.id) as Invoice | undefined;
+  const invoice = await getInvoice(params.id);
+  
   if (!invoice) {
     notFound();
   }
 
-  const customer = mockCustomers.find(c => c.id === invoice.customerId) as Customer | undefined;
+  const customer = invoice.customerId ? await getCustomer(invoice.customerId) : null;
+  const customerNameForDisplay = customer?.name || invoice.customerName || 'N/A';
+
 
   return (
     <div className="space-y-6">
@@ -74,17 +98,17 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
             <div>
               <p className="font-semibold text-muted-foreground">Billed To:</p>
-              <p className="text-foreground font-medium">{invoice.customerName}</p>
+              <p className="text-foreground font-medium">{customerNameForDisplay}</p>
               {customer?.email && <p className="text-muted-foreground">{customer.email}</p>}
               {customer?.phone && <p className="text-muted-foreground">{customer.phone}</p>}
             </div>
             <div>
               <p className="font-semibold text-muted-foreground">Issue Date:</p>
-              <p className="text-foreground">{format(new Date(invoice.issueDate), "MMMM d, yyyy")}</p>
+              <p className="text-foreground">{format(parseISO(invoice.issueDate), "MMMM d, yyyy")}</p>
             </div>
             <div>
               <p className="font-semibold text-muted-foreground">Due Date:</p>
-              <p className="text-foreground">{format(new Date(invoice.dueDate), "MMMM d, yyyy")}</p>
+              <p className="text-foreground">{format(parseISO(invoice.dueDate), "MMMM d, yyyy")}</p>
             </div>
           </div>
         </CardHeader>
@@ -143,3 +167,4 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
     </div>
   );
 }
+
