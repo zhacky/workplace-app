@@ -7,8 +7,12 @@ import { MainNav } from "@/components/main-nav";
 import { SiteHeader } from "@/components/site-header";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import type { Booking, Customer } from "@/lib/types";
+import { fetchCustomers } from "@/lib/customer-api";
+import { parseISO, set, differenceInMinutes, isFuture, isValid, format } from 'date-fns';
 
 export default function AppLayout({
   children,
@@ -17,6 +21,97 @@ export default function AppLayout({
 }) {
   const { user, isSuperadmin, isEnabled, loading } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
+  const [notifiedBookingIds, setNotifiedBookingIds] = useState<Set<string>>(new Set());
+  const [customers, setCustomers] = useState<Customer[]>([]);
+
+  // Fetch customers once for notification purposes
+  useEffect(() => {
+    if (user && (isSuperadmin || isEnabled)) { // Only fetch if user is authorized
+      const loadCustomers = async () => {
+        try {
+          const customerList = await fetchCustomers();
+          setCustomers(customerList);
+        } catch (error) {
+          console.error("Error fetching customers for notifications:", error);
+        }
+      };
+      loadCustomers();
+    }
+  }, [user, isSuperadmin, isEnabled]);
+
+  const customerMap = useMemo(() => new Map(customers.map(c => [c.id, c.name])), [customers]);
+
+  const checkUpcomingBookings = useCallback(async () => {
+    if (customers.length === 0 && !user) return; // Don't check if customers aren't loaded or no user
+
+    try {
+      const response = await fetch('/api/bookings');
+      if (!response.ok) {
+        console.error("Failed to fetch bookings for notifications, status:", response.status);
+        return;
+      }
+      const bookingsData: Booking[] = await response.json();
+      const now = new Date();
+
+      bookingsData.forEach(booking => {
+        if (notifiedBookingIds.has(booking.id)) {
+          return; // Already notified
+        }
+
+        try {
+          if (!booking.bookingDate || !booking.startTime) {
+              // console.warn("Booking missing date or start time:", booking.id);
+              return;
+          }
+          const bookingDateObj = parseISO(booking.bookingDate);
+          if (!isValid(bookingDateObj)) {
+            // console.warn("Invalid booking date for notification:", booking.id, booking.bookingDate);
+            return;
+          }
+
+          const [startHour, startMinute] = booking.startTime.split(':').map(Number);
+          const bookingStartDateTime = set(bookingDateObj, { hours: startHour, minutes: startMinute, seconds: 0, milliseconds: 0 });
+
+          if (!isValid(bookingStartDateTime) || !isFuture(bookingStartDateTime)) {
+            return; // Invalid date or already past
+          }
+
+          const minutesUntilStart = differenceInMinutes(bookingStartDateTime, now);
+
+          // Notify if booking is 10 to 15 minutes away
+          if (minutesUntilStart >= 10 && minutesUntilStart <= 15) {
+            const customerName = customerMap.get(booking.customerId) || 'A customer';
+            toast({
+              title: "Upcoming Booking Reminder",
+              description: `Booking for ${customerName} at ${booking.startTime} is starting in ${minutesUntilStart} minutes.`,
+              duration: 15000, // Show for 15 seconds
+            });
+            setNotifiedBookingIds(prev => new Set(prev).add(booking.id));
+          }
+        } catch(e) {
+          console.error("Error processing booking for notification:", booking.id, e);
+        }
+      });
+    } catch (error) {
+      console.error("Error in checkUpcomingBookings:", error);
+    }
+  }, [toast, notifiedBookingIds, customerMap, customers.length, user]);
+
+  useEffect(() => {
+    if (!loading && user && (isSuperadmin || isEnabled)) {
+      // Initial check shortly after load
+      const initialCheckTimeout = setTimeout(checkUpcomingBookings, 5000); // check 5s after load
+      // Periodic check
+      const intervalId = setInterval(checkUpcomingBookings, 60 * 1000); // Check every minute
+      
+      return () => {
+        clearTimeout(initialCheckTimeout);
+        clearInterval(intervalId);
+      };
+    }
+  }, [checkUpcomingBookings, loading, user, isSuperadmin, isEnabled]);
+
 
   useEffect(() => {
     if (!loading) {
@@ -29,19 +124,13 @@ export default function AppLayout({
   }, [user, isSuperadmin, isEnabled, loading, router]);
 
   if (loading) {
-    // AuthProvider shows its own skeleton, so we can return null here
-    // or a more specific app layout skeleton if desired.
     return null; 
   }
 
   if (!user || (!isSuperadmin && !isEnabled)) {
-    // If not loading, and user is not present or not authorized, 
-    // redirection should have happened via AuthProvider.
-    // Return null to prevent rendering app layout if redirection is pending or user is unauthorized.
     return null;
   }
   
-  // User is authenticated, authorized and not loading, render the app layout
   return (
     <SidebarProvider defaultOpen>
       <Sidebar collapsible="icon" className="border-r">

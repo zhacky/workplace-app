@@ -1,11 +1,12 @@
 
 // src/app/(app)/dashboard/page.tsx
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Clock, FileText, BarChart3, AlertTriangle } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Users, Clock, FileText, BarChart3, AlertTriangle, UserPlus, Receipt } from "lucide-react";
 import Link from "next/link";
 import admin from 'firebase-admin';
 import type { App } from 'firebase-admin/app';
-import { format, startOfMonth, endOfMonth, isValid } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isValid, parseISO } from 'date-fns';
+import type { Customer, Booking, Invoice } from "@/lib/types";
 
 // Firebase Admin SDK Initialization
 let app: App | undefined = undefined;
@@ -45,6 +46,25 @@ if (projectId && clientEmail && privateKey) {
   );
 }
 
+interface ActivityItem {
+  type: 'booking' | 'customer' | 'invoice';
+  timestamp: Date;
+  description: string;
+  icon: React.ElementType;
+  href?: string;
+}
+
+const serializeTimestamp = (timestamp: admin.firestore.Timestamp | string | undefined): string => {
+  if (timestamp instanceof admin.firestore.Timestamp) {
+    return timestamp.toDate().toISOString();
+  }
+  if (typeof timestamp === 'string') {
+    return timestamp;
+  }
+  return new Date(0).toISOString(); // Fallback for undefined or invalid
+};
+
+
 async function getDashboardData() {
   if (!db) {
     return {
@@ -52,6 +72,7 @@ async function getDashboardData() {
       todaysBookings: 0,
       pendingInvoices: 0,
       monthlyRevenue: 0,
+      recentActivities: [],
       error: "Database not configured. Please check server logs.",
     };
   }
@@ -82,14 +103,104 @@ async function getDashboardData() {
       monthlyRevenue += doc.data().amount || 0;
     });
 
-    return { activeCustomers, todaysBookings, pendingInvoices, monthlyRevenue, error: null };
+    // Fetch all customers for name mapping
+    const allCustomersSnapshot = await db.collection('customers').get();
+    const customerMap = new Map<string, string>();
+    allCustomersSnapshot.forEach(doc => {
+      customerMap.set(doc.id, doc.data().name || 'Unknown Customer');
+    });
+
+    // Recent Activities
+    let activities: ActivityItem[] = [];
+
+    // Recent Bookings
+    const recentBookingsSnapshot = await db.collection('bookings').orderBy('createdAt', 'desc').limit(3).get();
+    recentBookingsSnapshot.forEach(doc => {
+      const booking = doc.data() as Booking;
+      const customerName = customerMap.get(booking.customerId) || 'Unknown Customer';
+      let bookingDateString = 'Invalid Date';
+      if (booking.bookingDate && isValid(parseISO(booking.bookingDate))) {
+        bookingDateString = format(parseISO(booking.bookingDate), 'MMM d');
+      }
+      
+      let createdAtTimestamp = new Date(0); // Default to epoch if invalid
+      const serializedCreatedAt = serializeTimestamp(booking.createdAt);
+      if (isValid(parseISO(serializedCreatedAt))) {
+          createdAtTimestamp = parseISO(serializedCreatedAt);
+      }
+
+      activities.push({
+        type: 'booking',
+        timestamp: createdAtTimestamp,
+        description: `${customerName} booked a session for ${bookingDateString}.`,
+        icon: Clock,
+        href: `/bookings` 
+      });
+    });
+
+    // Recent Customers
+    const recentCustomersSnapshot = await db.collection('customers').orderBy('createdAt', 'desc').limit(3).get();
+    recentCustomersSnapshot.forEach(doc => {
+      const customer = doc.data() as Customer;
+      let createdAtTimestamp = new Date(0);
+      const serializedCreatedAt = serializeTimestamp(customer.createdAt);
+       if (isValid(parseISO(serializedCreatedAt))) {
+          createdAtTimestamp = parseISO(serializedCreatedAt);
+      }
+      activities.push({
+        type: 'customer',
+        timestamp: createdAtTimestamp,
+        description: `New customer registered: ${customer.name}.`,
+        icon: UserPlus,
+        href: `/customers/${doc.id}`
+      });
+    });
+
+    // Recent Paid Invoices
+    const recentPaidInvoicesSnapshot = await db.collection('invoices')
+      .where('status', '==', 'paid')
+      .orderBy('updatedAt', 'desc') 
+      .limit(3).get();
+      
+    recentPaidInvoicesSnapshot.forEach(doc => {
+      const invoice = doc.data() as Invoice;
+      const customerName = customerMap.get(invoice.customerId) || invoice.customerName || 'Unknown Customer';
+      let updatedAtTimestamp = new Date(0);
+      const serializedUpdatedAt = serializeTimestamp(invoice.updatedAt);
+       if (isValid(parseISO(serializedUpdatedAt))) {
+          updatedAtTimestamp = parseISO(serializedUpdatedAt);
+      }
+
+      activities.push({
+        type: 'invoice',
+        timestamp: updatedAtTimestamp, 
+        description: `Invoice ${invoice.invoiceNumber} for ${customerName} was paid.`,
+        icon: Receipt,
+        href: `/invoices/${doc.id}`
+      });
+    });
+
+    // Sort all activities by timestamp descending
+    activities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    const recentActivities = activities.slice(0, 5); // Display top 5 recent activities overall
+
+
+    return { 
+      activeCustomers, 
+      todaysBookings, 
+      pendingInvoices, 
+      monthlyRevenue, 
+      recentActivities,
+      error: null 
+    };
   } catch (error: any) {
     console.error("Error fetching dashboard data:", error);
     return { 
         activeCustomers: 0, 
         todaysBookings: 0, 
         pendingInvoices: 0, 
-        monthlyRevenue: 0, 
+        monthlyRevenue: 0,
+        recentActivities: [], 
         error: error.message || "An unexpected error occurred while fetching data." 
     };
   }
@@ -102,6 +213,7 @@ export default async function DashboardPage() {
     todaysBookings, 
     pendingInvoices, 
     monthlyRevenue,
+    recentActivities,
     error 
   } = await getDashboardData();
 
@@ -158,15 +270,33 @@ export default async function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-xl text-foreground">Recent Activity</CardTitle>
+             <CardDescription>Latest updates from your workspace.</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">Recent activities will be shown here. (e.g., new bookings, customer registrations)</p>
-            {/* Placeholder for recent activity list */}
-            <ul className="mt-4 space-y-2">
-                <li className="text-sm text-foreground">Alice Wonderland booked 3 hours.</li>
-                <li className="text-sm text-foreground">New customer: Bob The Builder registered.</li>
-                <li className="text-sm text-foreground">Invoice #INV-2024-001 paid.</li>
-            </ul>
+            {recentActivities.length > 0 ? (
+              <ul className="space-y-3">
+                {recentActivities.map((activity, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <div className="flex-shrink-0 h-8 w-8 rounded-full bg-secondary flex items-center justify-center">
+                        <activity.icon className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                        <p className="text-sm text-foreground leading-tight">{activity.description}</p>
+                        <p className="text-xs text-muted-foreground">
+                            {isValid(activity.timestamp) && activity.timestamp.getTime() !== new Date(0).getTime() ? format(activity.timestamp, "MMM d, yyyy 'at' p") : 'Processing date...'}
+                        </p>
+                         {activity.href && (
+                            <Link href={activity.href} className="text-xs text-primary hover:underline">
+                                View Details
+                            </Link>
+                        )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-muted-foreground text-center py-4">No recent activities to display.</p>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -176,10 +306,13 @@ export default async function DashboardPage() {
           <CardContent className="space-y-2">
              <Link href="/bookings" className="block text-primary hover:underline">Create New Booking</Link>
              <Link href="/customers" className="block text-primary hover:underline">Add New Customer</Link>
-             <Link href="/reports" className="block text-primary hover:underline">View Reports</Link>
+             <Link href="/invoices" className="block text-primary hover:underline">Create New Invoice</Link>
+             <Link href="/reports" className="block text-primary hover:underline">View Full Reports</Link>
           </CardContent>
         </Card>
       </div>
     </div>
   );
 }
+
+    
